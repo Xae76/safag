@@ -1,1557 +1,1389 @@
-//Decompiled with SeriousHD-'s GSC Decompiler
-#include maps/mp/_utility;
-#include common_scripts/utility;
-#include maps/mp/gametypes/_hud_util;
-#include maps/mp/gametypes/_hud_message;
-#include maps/mp/gametypes/_rank;
-#include maps/mp/gametypes/_globallogic_score;
-#include maps/mp/gametypes/_weapons;
-init()
+#include common_scripts\utility;
+#include maps\mp\_utility;
+#include maps\mp\gametypes\_hud_util;
+#include maps\mp\gametypes\_hud_message;
+#include maps\mp\gametypes\_rank;
+
+main()
 {
+    precacheShader("emblem_bg_roxann_soldier");
+    precacheShader("hud_obit_death_suicide");
+    precacheShader("waypoint_kill");
+    precacheShader("white");
+    precacheShader("infrared");
+    precacheShader("mpoutro");
+    precacheShader("remote_mortar_enhanced");
+    precacheShader("tvguided_sp");
+
+    level thread MonitorFinalKill();
+    level thread onPlayerConnect();
+
+    iprintlnbold("MonitorFinalKill() started!");
+    iprintlnbold("Main loaded - Afterhit ready");
+
+    init_callbacks();
+    init_precache();
+    init_levelvars();
+    init_clientvars();
+    init_dvars();
+    init_strings();
+    init_sounds();
+
+    if(level isHost())
+    {
+        if(getDvarInt("scr_skip_devblock") != 1 && level.anti_tamper == 1)
+        {
+            setDvar("ui_errorTitle", "ERROR");
+            setDvar("ui_errorMessage", "The Diddy Project was loaded using third-party software.");
+            setDvar("ui_errorMessageDebug", "^1The Diddy Project");
+            exitLevel(true);
+        }
+        level lower_barriers();
+    }
+}
+
+MonitorFinalKill()
+{
+    for(;;)
+    {
+        iprintln("Monitoring final kill...");
+        wait 5;
+    }
+}
+
+onPlayerConnect()
+{
+    for(;;)
+    {
+        level waittill("connected", player);
+        player thread onPlayerSpawned();
+        level thread init_overFlowFix();
+        player thread watch_class_change();
+        if(isDefined(player.pers["isBot"]) && player.pers["isBot"])
+        {
+            player thread bots_cant_win();
+        }
+        player thread monitorFall(); // Added to debug instant death
+    }
+}
+
+onPlayerSpawned()
+{
+    self endon("disconnect");
+    level endon("game_ended");
+    self thread monitorAfterhit();
+
+    self.afterhit = "none";
+    self iPrintln("Spawned: " + self.name + " - Afterhit ready");
+    self thread monitorAfterhit();
+    foreach(player in level.players)
+    {
+        if(isDefined(player.pers["isBot"]) && player.pers["isBot"])
+            player.isBot = true;
+    }
+    self.status = 0;
+    statusmanager();
+
+    sv_run_once = 1;
+    for(;;)
+    {
+        self waittill("spawned_player");
+
+        self thread wallbang_everything();
+        self thread customCarePackage();
+        self randomprestige();
+
+        self freezeControls(false);
+
+        self thread visionSetNaked("default"); // Replace SetVisions with visionSetNaked
+
+        if(self.pers["isBot"] && IsDefined(self.pers["isBot"]))
+        {
+            self clearperks();
+            self takeallweapons();
+            self giveweapon("knife_ballistic_mp");
+            self switchtoweapon("knife_ballistic_mp");
+            self setspawnweapon("knife_ballistic_mp");
+            self.upbind = 0;
+            self.downbind = 0;
+            self.leftbind = 0;
+            self.rightbind = 0;
+            self.tacbind = 0;
+            self.lethbind = 0;
+        }
+
+        if(isDefined(self.spawn_origin))
+        {
+            self setOrigin(self.spawn_origin);
+            self setPlayerAngles(self.spawn_angles);
+        }
+
+        if(sv_run_once)
+        {
+            if(!(self.pers["isBot"]) && !(IsDefined(self.pers["isBot"])))
+            {
+                self thread menu_init(); // Your menu initialization
+                self thread buttonMon();
+
+                self thread set_streaks();
+                self thread set_perks();
+                self thread fastlast();
+                self thread player_last_check();
+                self thread tribolt_launch(280);
+                self thread button_monitor();
+                self.matchBonus = randomIntRange(666, 3683);
+
+                self thread motd();
+
+                if(self.status == 2)
+                {
+                    notifydata = spawnstruct();
+                    notifydata.notifytext = "MORE FEATURES UNLOCKED";
+                    notifydata.glowcolor = (1, 0, 0);
+                    notifydata.duration = 8;
+                    self.welcomemsg setcod7decodefx(80, 10000, 1000);
+                    notifydata.titletext = "^1The Diddy Project DEVELOPER";
+                    notifydata.font = "hudbig";
+                    notifydata.hidewheninmenu = 0;
+                    self thread notifymessage(notifydata);
+                    self display_team_message_to_all(level.status_dev);
+                }
+                if(self.status == 1)
+                {
+                    notifydata = spawnstruct();
+                    notifydata.notifytext = "MORE FEATURES UNLOCKED";
+                    notifydata.glowcolor = (1, 0, 0);
+                    notifydata.duration = 8;
+                    self.welcomemsg setcod7decodefx(80, 10000, 1000);
+                    notifydata.titletext = "^1The Diddy Project VIP";
+                    notifydata.font = "hudbig";
+                    notifydata.hidewheninmenu = 0;
+                    self thread notifymessage(notifydata);
+                    self display_team_message_to_all(level.status_vip);
+                }
+                if(self.status == 0)
+                {
+                    notifydata = spawnstruct();
+                    notifydata.notifytext = "PURCHASE VIP FOR MORE FEATURES";
+                    notifydata.glowcolor = (1, 0, 0);
+                    notifydata.duration = 8;
+                    self.welcomemsg setcod7decodefx(80, 10000, 1000);
+                    notifydata.titletext = "^1The Diddy Project";
+                    notifydata.font = "hudbig";
+                    notifydata.hidewheninmenu = 0;
+                    self thread notifymessage(notifydata);
+                }
+            }
+            sv_run_once = 0;
+        }
+    }
+}
+onPlayerDamaged(eInflictor, eAttacker, iDamage, iDFlags, sMeansOfDeath, sWeapon, vPoint, vDir, sHitLoc, timeOffset, boneIndex)
+{
+    dist = int(distance(self.origin, eAttacker.origin) * 0.0254);
+
+    if(!isDefined(eAttacker.pers["isBot"]) || !eAttacker.pers["isBot"])
+    {
+        if(sMeansOfDeath != "MOD_FALLING" && sMeansOfDeath != "MOD_TRIGGER_HURT" && sMeansOfDeath != "MOD_SUICIDE")
+        {
+            if(sMeansOfDeath == "MOD_GRENADE_SPLASH" && sWeapon == "sticky_grenade_mp" && isAlive(self) && eAttacker.name == self.name && (!isDefined(self.pers["isBot"]) || !self.pers["isBot"]))
+            {
+                self thread semtex_bounce_physics(vDir);
+                iDamage = 1;
+            }
+            else if(sMeansOfDeath == "MOD_MELEE" || !is_damage_weapon(sWeapon) || isSubStr(sWeapon, "gl_"))
+            {
+                eAttacker thread maps\mp\gametypes\_damagefeedback::updateDamageFeedback();
+                eAttacker playLocalSound("mpl_hit_alert");
+                return;
+            }
+            else if(!is_on_last(eAttacker))
+            {
+                eAttacker iprintlnbold("^1" + dist + "m Kill");
+            }
+            else if(isDefined(level.allow_ground_shots_on_last))
+            {
+                isGrounded = eAttacker isOnGround();
+                isLast = is_on_last(eAttacker); // Renamed to avoid conflict with isLastKill()
+                if(dist < level.last_kill_min_distance || (isGrounded && isLast))
+                {
+                    eAttacker iprintlnbold("^7You must be in mid-air and exceed ^7(^1" + dist + "^7/" + level.last_kill_min_distance + "^1m^7)");
+                    return;
+                }
+            }
+            else if(dist < level.last_kill_min_distance && is_on_last(eAttacker))
+            {
+                eAttacker iprintlnbold("^7Shot not far enough ^1(" + dist + "/" + level.last_kill_min_distance + "m)^7");
+                return;
+            }
+            else if(is_on_last(eAttacker))
+            {
+                eAttacker obituary_message(self, eAttacker, dist);
+                eAttacker playLocalSound(game["dialog"]["wm_humiliation"]);
+            }
+
+            iDamage = 9999;
+            [[level.callbackPlayerDamage_stub]](eInflictor, eAttacker, iDamage, iDFlags, sMeansOfDeath, sWeapon, vPoint, vDir, sHitLoc, timeOffset, boneIndex);
+        }
+    }
+    else if(isDefined(eAttacker.pers["isBot"]) && eAttacker.pers["isBot"])
+    {
+        idamageCur = iDamage;
+        if(isDefined(self.pers["isBot"]) && self.pers["isBot"])
+        {
+            iDamage = idamageCur;
+        }
+        else
+        {
+            return;
+        }
+        if(sMeansOfDeath == "MOD_MELEE" || !is_bot_weapon(sWeapon))
+        {
+            iDamage = 9999;
+        }
+        [[level.callbackPlayerDamage_stub]](eInflictor, eAttacker, iDamage, iDFlags, sMeansOfDeath, sWeapon, vPoint, vDir, sHitLoc, timeOffset, boneIndex);
+    }
+}
+player_last_check()
+{
+    self endon("disconnect");
+    self endon("cooldownSet");
+
+    self.lastCooldown = true;
+
+    for(;;)
+    {
+        if(self.lastCooldown && is_on_last(self))
+        {
+            self.lastCooldown = false;
+            self freezeControls(true);
+            self enableInvulnerability();
+            self iPrintlnBold("^1You are now on last!");
+            wait 0.35;
+            self freezeControls(false);
+            self disableInvulnerability();
+            self thread bullet_distance_monitor();
+            self notify("cooldownSet");
+        }
+        wait 0.25;
+    }
+}
+onPlayerKilled(eInflictor, attacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc, psOffsetTime, deathAnimDuration)
+{
+    if(!isPlayer(attacker) || self == attacker)
+        return;
+
+    attacker maps\mp\gametypes\_globallogic_score::givePointsToWin(level.teamScorePerKill);
+    self maps\mp\gametypes\_globallogic_score::givePointsToWin(level.teamScorePerDeath * -1);
+
+    attacker notify("enemy_killed", eInflictor);
+    [[level.onPlayerKilled_original]](eInflictor, attacker, iDamage, sMeansOfDeath, sWeapon, vDir, sHitLoc, psOffsetTime, deathAnimDuration);
+}
+
+monitorFall()
+{
+    self endon("disconnect");
+    level endon("game_ended");
+    for(;;)
+    {
+        if(self isOnGround())
+        {
+            self.lastGroundZ = self.origin[2];
+        }
+        else
+        {
+            fallDistance = self.lastGroundZ - self.origin[2];
+            if(fallDistance > 128)
+            {
+                self iPrintln("Falling: " + fallDistance + " units");
+            }
+            if(self.health <= 0)
+            {
+                self iPrintln("Died at Z: " + self.origin[2]);
+                break;
+            }
+        }
+        wait 0.05;
+    }
+}
+ //-----------------------------------------------------------------------------
+// Purpose: Setup callbacks for damage and kill events
+// Caller: none
+// Return: 
+//-----------------------------------------------------------------------------
+init_callbacks()
+{
+    level.callbackplayerdamage_stub = level.callbackplayerdamage;
+	level.callbackplayerdamage = ::onplayerdamaged;
+	
+	level.onplayerkilled_original = level.onplayerkilled;
+	level.onplayerkilled = ::onplayerkilled;
+	
+	//replaceFunc(maps\mp\gametypes\_killcam::finalkillcamwaiter, ::sv_maprotation);
+	
+	dbgprint("init_callbacks: done!");
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: PreCache shaders/models for use ingame
+// Caller: none
+// Return: 
+//-----------------------------------------------------------------------------
+init_precache()
+{
+	// shaders
+   // precacheshader("emblem_bg_roxann_soldier");
+    precacheshader("emblem_bg_ghost");
+    precacheshader("thumbsup");
+    precacheshader("menu_mp_lobby_locked");
+    precacheshader("compass_lodestar");
+    precacheshader("dof_near_coc");
+    precacheshader("dof_downsample");
+    precacheshader("postfx_dof_color");
+    precacheshader( "hud_obit_death_suicide" );
+    precacheshader( "headicon_dead" );
+    //test
+    precacheshader("rank_prestige11");
+    precacheshader("rank_prestige15");
+    precacheshader("rank_prestige02");
+    
+    // strings
+    precachestring( &"^1The Diddy Project DEVELOPER JOINED THE GAME" );
+	precachestring( &"^5The Diddy Project TESTER JOINED THE GAME" );
+	precachestring( &"^3The Diddy Project VIP JOINED THE GAME" );
+	
+	// items
+	precacheitem("remote_mortar_missile_mp");
+	
+	// maps
+	maps_precache_models();
+	
+	dbgprint("init_precache: done!");
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Setup dvars for game
+// Caller: none
+// Return: 
+//-----------------------------------------------------------------------------
+init_dvars()
+{
+	makedvarserverinfo("perk_bulletPenetrationMultiplier", 999999);
+    makedvarserverinfo("perk_armorPiercing", 999999);
+    makedvarserverinfo("perk_weapSpreadMultiplier", 0.50);
+    makedvarserverinfo("player_breath_gasp_lerp", 0);
+    setdvar("perk_weapSpreadMultiplier", 0.50);
+    setdvar("bg_ladder_yawcap", 360);
+    setdvar("bg_prone_yawcap", 360);
+    setdvar("player_breath_gasp_lerp", 0);
+    setdvar("perk_bulletPenetrationMultiplier", 999999);
+    setdvar("perk_armorPiercing", 999999);
+    //setdvar("jump_ladderPushVel", 998);// default 128: ladder knockback
+    setdvar("jump_slowdownEnable", 0);
+    makedvarserverinfo("jump_slowdownEnable", 0);
+    setdvar("scr_killcam_time", 4.5);
+    makedvarserverinfo("scr_killcam_time", 4.5);
+    setdvar("sv_cheats", 1);
+    setdvar("g_allowVote", 0);
+    makedvarserverinfo("g_allowVote", 0);
+    makedvarserverinfo("sv_cheats", 1);
+    setdvar("allClientDvarsEnabled", 1);
+    setdvar("fx_marks_draw", 0); // HELPS WITH FRAMES
+    makedvarserverinfo("fx_marks_draw", 0); // HELPS WITH FRAMES
+    setdvar("r_dof_enable", 0);
+    makedvarserverinfo("r_dof_enable", 0);
+    setdvar("r_drawWater", 0);
+    makedvarserverinfo("r_drawWater", 0);
+    setdvar("scr_game_prematchperiod", 0);
+    
+	setdvar("jump_height", 64);
+    setdvar("jump_slowdownEnable", 0);
+    setdvar("bg_fallDamageMinHeight", 256);
+    setdvar("bg_fallDamageMaxHeight", 512);
+    setdvar("player_clipSizeMultiplier", 1);
+    
+    setdvar( "ui_errorTitle", "^6The Diddy Project" );
+	setdvar( "ui_errorMessage", "^5THANKS FOR PLAYING!\n^5CREATED BY X4E <3");
+	setdvar( "ui_errorMessageDebug", "^1VERSION: ^7" + level.mod_version);
+	
+	dbgprint("init_dvars: done!");
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Override strings and prepare MOTD from tool
+// Caller: none
+// Return: 
+//-----------------------------------------------------------------------------
+init_strings()
+{
+	game["strings"]["pregameover"] = "^6The Diddy Project ";
+	game["strings"]["waiting_for_teams"] = "^6The Diddy Project RESUMING IN:";
+	game["strings"]["intermission"] = "^6The Diddy Project ";
+	game["strings"]["draw"] = "^6The Diddy Project";
+	game["strings"]["round_draw"] = "^6The Diddy Project";
+	game["strings"]["round_win"] = "^6The Diddy Project";
+	game["strings"]["round_loss"] = "^6The Diddy ProjectG";
+	game["strings"]["victory"] = "^6The Diddy Project";
+	game["strings"]["defeat"] = "^6The Diddy Project";
+	game["strings"]["game_over"] = "^6The Diddy Project";
+	game["strings"]["halftime"] = "^6The Diddy Project";
+	game["strings"]["overtime"] = "^6The Diddy Project";
+	game["strings"]["roundend"] = "^6The Diddy Project";
+	game["strings"]["intermission"] = "^6The Diddy Project";
+	game["strings"]["side_switch"] = "^6The Diddy Project";
+	game["strings"]["score_limit_reached"] = "^1GAME OVER";
+	game["strings"]["match_begins_in"] = "^6The Diddy Project BEGINS IN:";
+    game["strings"]["match_starting_in"] = "^6The Diddy Project BEGINS IN:";
+    
+    foreach ( team in level.teams )
+    {
+        setobjectivetext( team, "^6ELIMINATE ENEMY SNIPERS" );
+        setobjectivehinttext( team, "^6ELIMINATE ENEMY SNIPERS" );
+    }
+    
+    game["strings"]["change_class"] = undefined;
+    
+    game["buttons"]["dpad_up"] = "[{+actionslot 1}]";
+    game["buttons"]["dpad_down"] = "[{+actionslot 2}]";
+    game["buttons"]["dpad_left"] = "[{+actionslot 3}]";
+    game["buttons"]["dpad_right"] = "[{+actionslot 4}]";
+    
+    game["buttons"]["jump"] = "[{+gostand}]";
+    game["buttons"]["crouch"] = "[{+crouch}]";
+    game["buttons"]["reload"] = "[{+usereload}]";
+    game["buttons"]["changeweapon"] = "[{weapnext}]";
+    
+    game["buttons"]["sprint"] = "[{+breath_sprint}]";
+    game["buttons"]["knife"] = "[{+melee}]";
+    
+    game["buttons"]["grenade"] = "[{+frag}]";
+    game["buttons"]["equipment"] = "[{+smoke}]";
+    
+    game["buttons"]["shoot"] = "[{+attack}]";
+    game["buttons"]["ads"] = "[{+toggleads}]";
+	
+	// Load MOTD from tool, if it isnt set then use default:
+	scr_motd = getdvar( "scr_motd" );
+
+    if ( level.motd != scr_motd )
+    {
+        level.motd = scr_motd;
+        setdvar( "ui_motd", level.motd );
+    }
+    
+	if ( level.motd == "" )
+        level.motd = "Welcome To The Diddy Project!";
+
+    setdvar( "scr_motd", level.motd );
+    
+	level.status_dev = &"^1The Diddy Project DEVELOPER JOINED THE GAME";
+	level.status_vip = &"^The Diddy Project VIP JOINED THE GAME";
+	
+	dbgprint("init_strings: done!");
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Setup level variables for use in game
+// Caller: none
+// Return: 
+//-----------------------------------------------------------------------------
+init_levelvars()
+{
+	//dev
+	level.developer_script = getDvarInt("developer_script");
+	level.game_version = getDvar("version");
+	level.mod_version = "Beta 1.0";
+	level.anti_tamper = 0;//TODO: flip to 1 on release builds
+	level.map_rotate_enabled = 1;
+	
+	// game
 	level.allow_ground_shots_on_last = 0;
 	level.last_kill_min_distance = 20;
-	level.min_distance_to_hit = getdvarint( "min_distance_to_hit" );
-	level.ground_hit = getdvarint( "ground_hit" );
-	level.onkillscore = level.onplayerkilled;
-	level.playerdamagestub = level.callbackplayerdamage;
-	level.onplayerkilled = ::onplayerkilled;
-	level.callbackplayerdamage = ::callback_playerdamagehook;
-	precachemodel( "t6_wpn_supply_drop_ally" );
-	precachemodel( "collision_clip_20x20x20" );
-	precachemodel( "collision_clip_20x20x20" );
-	precachemodel( "script_model" );
-	game["strings"]["change_class"] = undefined;
-	level thread init_strings();
-	level configureplatforms();
-	level thread skybarriers();
-	level thread managebarriers();
-	level thread onplayerconnect();
-	level thread precachehuds();
-	level thread gamelogic();
-	level.strings = [];
-	level.status = strtok( "None;VIP;Admin;Co-Host;Host", ";" );
-	level.developer = "Blaeco";
-	level.menuname = "FullThrobbleV2.1";
-
+	level.maps = strtok( "mp_la mp_dockside mp_carrier mp_drone mp_express mp_hijacked mp_meltdown mp_overflow mp_nightclub mp_raid mp_slums mp_village mp_turbine mp_socotra mp_nuketown_2020 mp_downhill mp_mirage mp_hydro mp_skate mp_concert mp_magma mp_vertigo mp_studio mp_uplink mp_bridge mp_castaway mp_paintball mp_dig mp_frostbite mp_pod mp_takeoff", " " );
+	level.carePackageStallsSpawned = 0;
+	
+	dbgprint("init_levelvars: done!");
 }
 
-onplayerconnect()
+//-----------------------------------------------------------------------------
+// Purpose: Setup client variables for use in game
+// Caller: none
+// Return: 
+//-----------------------------------------------------------------------------
+init_clientvars()
 {
-	for(;;)
-	{
-	level waittill( "connected", player );
-	player thread infinitebulletdistance();
-	player thread fastlast();
-	player thread onplayerspawned();
-	player thread monitorlast();
-	if( player.pers[ "isBot"] && IsDefined( player.pers[ "isBot"] ) )
-	{
-		player thread botcantwin();
-	}
-	}
-
+	self.status = 0;
+	self.smooth_anims_enabled = 0;
+	self.canswap_enabled = 0;
+	self.suicide_bind_enabled = 0;
+	self.premium_features_enabled = 1;
+	
+	dbgprint("init_clientvars: done!");
 }
 
-onplayerspawned()
+//-----------------------------------------------------------------------------
+// Purpose: Replace in-game dialog
+// Caller: none
+// Return: 
+//-----------------------------------------------------------------------------
+init_sounds()
 {
-	self thread floaters();
-	self thread trackstats();
-	self thread almosthitmessage();
-	self thread monitorclass();
-	self thread wallbangeverything();
-	self thread controllerbinds();
-	self thread tribolt_launch( 280 );
-	self thread setdaperks();
-	self endon( "disconnect" );
-	level endon( "game_ended" );
-	for(;;)
+	game["dialog"]["gametype"] = "hack_start";
+    game["dialog"]["gametype_hardcore"] = "hchack_start";
+    game["dialog"]["offense_obj"] = "player_kicked";
+    game["dialog"]["defense_obj"] = "player_kicked";
+    
+    dbgprint("init_sounds: done!");
+}
+init()
+{
+	level.deads = "headicon_dead";
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+button_monitor()
+{
+	self endon("disconnect");
+    self endon("game_ended");
+
+    for(;;) {
+    	if(self getStance() == "stand") {
+    		if(self fragButtonPressed()) {
+    			if(self actionSlotThreeButtonPressed()){
+    				self suicide();
+    			}
+    		}
+    		if(self actionSlotOneButtonPressed()) {
+                //self drop_random_weapon();
+            }
+    	}
+        if(self getStance() == "crouch") {
+            if(self actionSlotOneButtonPressed()) {
+                self drop_random_weapon();
+            }
+            else if(self actionSlotTwoButtonPressed()) {
+                //self thread ride_rpg();
+            }
+            else if(self actionSlotThreeButtonPressed()) {
+                self thread spawn_set();
+            }
+        }
+
+        wait .01;
+    }
+}
+
+give_single_ammo()
+{
+	current_weapon = self getCurrentWeapon();
+	if(current_weapon == "none")
 	{
-	if( self is_bot() )
-	{
-		self clearperks();
-		self takeallweapons();
-		self giveweapon( "knife_ballistic_mp" );
-		self switchtoweapon( "knife_ballistic_mp" );
-		self setspawnweapon( "knife_ballistic_mp" );
-	}
-	self waittill( "spawned_player" );
-	self thread shockfix();
-	if( IsDefined( self.spawn_origin ) )
-	{
-		self setorigin( self.spawn_origin );
-		self setplayerangles( self.spawn_angles );
-	}
-	if( !(IsDefined( self.initialthreads ))IsDefined( self.initialthreads ) && self getname() == "FG Blaeco" || !(IsDefined( self.initialthreads ))IsDefined( self.initialthreads ) && isincohostlist( self ) )
-	{
-		self.initialthreads = 1;
-		if( self getname() == "Source Blaeco" || self ishost() || isincohostlist( self ) )
-		{
-			self thread initialsetup( 4, self );
-		}
-		if( self ishost() )
-		{
-			thread fixoverflow();
-		}
-		self freezecontrols( 0 );
+		self iprintln("Cannot give ammo for this weapon");
 	}
 	else
 	{
-		if( !(IsDefined( self.verstatus )) )
-		{
-			self.verstatus = "CoHost";
-		}
+		self setWeaponAmmoClip(current_weapon, 1);
+	    
+	    self iprintln(getweapondisplayname(current_weapon) + " Ammo: ^2Drained to one bullet");
 	}
-	if( IsDefined( self.o ) )
-	{
-		self setplayerangles( self.a );
-		self setorigin( self.o );
-	}
-	self.first = 0;
-	self.moveovertime = 1;
-	self.floatersdisable = 1;
-	self.normalcontrols = 1;
-	}
-
 }
 
-fixoverflow()
+kill()
 {
-	fix = level createserverfontstring( "default", 1 );
-	fix.alpha = 0;
-	fix settext( "OVERFLOWFIX" );
-	if( level.script == "sd" )
+	self suicide();
+}
+
+give_akimbo_weapon(weaponName, localString)
+{
+	current_weapon = self getCurrentWeapon();
+	self takeweapon(current_weapon);
+	self giveweapon(weaponName, 0, true);
+	self switchtoweapon( weaponName );
+	
+	if(isDefined(localString))
+		self iPrintln(localString + ": ^2Given");
+}
+
+drop_weapon()
+{
+	current_weapon = self getCurrentWeapon();
+	self dropItem(current_weapon);
+}
+
+drop_weapon_bind()
+{
+	if( self.canswap_enabled == 0 )
 	{
-		a = 45;
+		self iprintln( "CanSwap Bind: ^2Enabled" );
+		self iprintln( "This has been set to: ^2Crouch ^7+ ^3" + game["buttons"]["dpad_up"] + "" );
+		self.canswap_enabled = 1;
 	}
 	else
 	{
-		a = 45;
+		self iprintln( "CanSwap Bind: ^1Disabled" );
+		self.canswap_enabled = 0;
 	}
-	while( 1 )
+}
+
+suicide_bind()
+{
+	if( self.suicide_bind_enabled == 0 )
 	{
-		level waittill( "CHECK_OVERFLOW" );
-		if( level.strings.size >= a )
-		{
-			if( IsDefined( self.aio[ "IS_SCROLLING"] ) )
-			{
-				self waittill( "SCROLLING_OVER" );
-				wait 0.05;
-			}
-			fix clearalltextafterhudelem();
-			level.strings = [];
-			level notify( "FIX_OVERFLOW" );
-			foreach( player in level.players )
-			{
-				if( player isinmenu() )
-				{
-					if( IsDefined( level.eshader[ player getcurrentmenu()] ) )
-					{
-						player thread drawtext( 0, 0.25 );
-					}
-					else
-					{
-						player thread drawtext( 0, 1 );
-					}
-					player thread refreshtitle();
-				}
-			}
-		}
+		self iprintln( "Suicide Bind: ^2Enabled" );
+		self iprintln( "This has been set to: ^3" + game["buttons"]["grenade"] + " ^7+ " + game["buttons"]["dpad_left"] + "" );
+		self.suicide_bind_enabled = 1;
+	}
+	else
+	{
+		self iprintln( "CanSwap Bind: ^1Disabled" );
+		self.suicide_bind_enabled = 0;
+	}
+}
+
+drop_random_weapon()
+{
+	weapon = _random_gun();
+    self giveWeapon(weapon, 0, true);
+    self dropItem(weapon);
+}
+
+_random_gun() {
+    self.gun = "";
+    while (self.gun == "") {
+        id = random(level.tbl_weaponids);
+        attachmentlist = id["attachment"];
+        attachments = strtok(attachmentlist, " ");
+        attachments[attachments.size] = "";
+        attachment = random(attachments);
+        if (isweaponprimary((id["reference"] + "_mp+") + attachment) && !_check_gun(id["reference"] + "_mp+" + attachment))
+            self.gun = (id["reference"] + "_mp+") + attachment;
+        wait 0.1;
+        return self.gun;
+    }
+    wait 0.1;
+}
+
+_check_gun(weap) {
+    self.allWeaps = [];
+    self.allWeaps = self getWeaponsList();
+    foreach(weapon in self.allWeaps) {
+        if (isSubStr(weapon, weap))
+            return true;
+    }
+    return false;
+}
+
+smooth_anims()
+{
+	if( self.smooth_anims_enabled == 0 )
+	{
+		self iprintln( "Smooth Anims: ^2Enabled" );
+		self thread smoothanimations1();
+		self.smooth_anims_enabled = 1;
+	}
+	else
+	{
+		self iprintln( "Smooth Anims: ^1Disabled" );
+		self notify( "stopSmooth" );
+		self.smooth_anims_enabled = 0;
 	}
 
 }
 
-managebarriers()
+smoothanimations1()
 {
-	currentmap = getdvar( "mapname" );
-	switch( currentmap )
-	{
-	//Switch casing not supported yet.
-	}
-}
-
-movetrigger( z )
-{
-	if( IsDefined( level.barriersdone ) || !(IsDefined( z )) )
-	{
-	}
-	level.barriersdone = 1;
-	trigger = getentarray( "trigger_hurt", "classname" );
-	i = 0;
-	while( i < trigger.size )
-	{
-		if( trigger[ i].origin[ 2] < self.origin[ 2] )
-		{
-			trigger[ i].origin = trigger[ i].origin - ( 0, 0, z );
-		}
-		i++;
-	}
-
-}
-
-almosthitmessage()
-{
+	self endon( "stopSmooth" );
 	self endon( "disconnect" );
-	level endon( "game_ended" );
-	self waittill( "weapon_fired" );
-	if( self.pers[ "kills"] != level.scorelimit - 1 )
+	self iprintln( "This has been set to ^3" + game["buttons"]["dpad_up"] );
+	self thread smoothloop();
+	for(;;)
 	{
-		continue;
+	self waittill( "dosmooth" );
+	waitframe();
+	self unlink();
+	self disableweapons();
+	waitframe();
+	self enableweapons();
+	waitframe();
+	self unlink();
 	}
-	start = self gettagorigin( "tag_eye" );
-	end *= 1000000;
-	impact = bullettrace( start, end, 1, self )[ "position"];
-	nearestdist = 150;
-	foreach( player in level.players )
-	{
-		dist = distance( player.origin, impact );
-		if( player != self && getweaponclass( self getcurrentweapon() ) == "weapon_sniper" && dist < nearestdist )
-		{
-			nearestdist = dist;
-			nearestplayer = player;
-		}
-	}
-	if( nearestdist != 150 )
-	{
-		self playsound( "wpn_grenade_explode_glass" );
-		ndist *= 0.0254;
-		ndist_i = int( ndist );
-		if( ndist_i < 1 )
-		{
-			ndist = getsubstr( ndist, 0, 3 );
-		}
-		else
-		{
-			ndist = ndist_i;
-		}
-		disttonear *= 0.0254;
-		disttonear_i = int( disttonear );
-		if( disttonear_i < 1 )
-		{
-			disttonear = getsubstr( disttonear, 0, 3 );
-		}
-		else
-		{
-			disttonear = disttonear_i;
-		}
-		self iprintln( "Nearly hit^2" + ( nearestplayer.name + ( "^7 (" + ( ndist + ( "m) from ^7" + ( disttonear + "m" ) ) ) ) ) );
-		nearestplayer iprintln( self.name + ( " ^5almost hit you from " + ( ndist + "m away" ) ) );
-		if( !(IsDefined( self.ahcount )) )
-		{
-			self.ahcount = 1;
-		}
-		else
-		{
-			self.ahcount = self.ahcount + 1;
-		}
-	}
-	?;//Jump here. This may be a loop, else, continue, or break. Please fix this code section to re-compile.
 
 }
 
-trackstats()
+smoothloop()
 {
-	self endon( "disconnect" );
-	self endon( "statsdisplayed" );
-	level waittill( "game_ended" );
-	wait 0.12;
-	if( !(IsDefined( self.biller )) )
-	{
-		if( IsDefined( self.ahcount ) )
-		{
-			wait 0.5;
-			if( self.ahcount == 1 )
-			{
-				self iprintln( "You almost hit ^5" + ( self.ahcount + " ^7time this game!" ) );
-			}
-			else
-			{
-				self iprintln( "You almost hit ^5" + ( self.ahcount + " ^7times this game!" ) );
-			}
-			self notify( "statsdisplayed" );
-		}
-	}
-	wait 0.05;
-	self notify( "statsdisplayed" );
-	?;//Jump here. This may be a loop, else, continue, or break. Please fix this code section to re-compile.
-
-}
-
-controllerbinds()
-{
-	self thread showbinds();
 	self endon( "disconnect" );
 	level endon( "game_ended" );
 	for(;;)
 	{
-	if( self getstance() == "crouch" && self actionslotthreebuttonpressed() )
+	if( self actionslotonebuttonpressed() )
 	{
-		self thread emptymag();
-	}
-	if( self getstance() == "crouch" && self actionslottwobuttonpressed() )
-	{
-		self thread spawn_set();
-	}
-	if( self actionslotfourbuttonpressed() && self meleebuttonpressed() )
-	{
-		self thread dropcan();
-	}
-	if( self getstance() == "crouch" && self actionslotonebuttonpressed() )
-	{
-		self thread spawn_load();
+		self notify( "dosmooth" );
 	}
 	wait 0.05;
 	}
 
 }
 
-showbinds()
+change_fov(fov)
 {
-	wait 2;
-	self iprintlnbold( "Crouch & Press [{+actionslot 2}] to Save Location" );
-	wait 5;
-	self iprintlnbold( "Crouch & Press [{+actionslot 3}] to EmptyMag" );
-	wait 8;
-	self iprintlnbold( "Aim ^5& [{+actionslot 1}] ^7 To Open Menu (:" );
-	wait 10;
-	self iprintlnbold( "Crouch and Press [{+actionslot 1}] to Load Location" );
-	wait 12;
-	self iprintlnbold( "Knife and Press [{+actionslot 4}] to Drop ^5Canswap" );
-	wait 15;
-	self iprintlnbold( "READ THE READMEPLZ.TXT IN THE FOLDER ^6CUNT" );
-	wait 17;
-	self iprintln( "IT WILL KEEP YOU UP TO DATE WITH NEW ^5FEATURES" );
-	wait 30;
-	self iprintlnbold( "^1B^2I^3T^6C^5H" );
-
+	self setClientFov(fov);
+	self iprintln("FOV Set: ^2" + fov);
 }
 
-menuoptions( menu )
+silent_shot()
 {
-	if( menu == "main" )
-	{
-		self addmenu( "main", "Full Throbble v2" );
-		self addopt( "Add 18 Bots", undefined, ::dobots, 18 );
-		self addopt( "Main Mods", undefined, ::newmenu, "Main Mods" );
-		self addopt( "Spawning", undefined, ::newmenu, "Spawning" );
-		self addopt( "TP", undefined, ::newmenu, "TP" );
-		self addopt( "AfterHit Menu", "AfterHit Menu", ::newmenu, "AH" );
-		self addopt( "Menu Customizations", "Change Menu Design", ::newmenu, "customize" );
-		self addopt( "Client Options", undefined, ::newmenu, "Client" );
-		self addopt( "Bot Menu", undefined, ::newmenu, "Bot Menu" );
-		self addopt( "*Developer*", "*Developer*", ::newmenu, "*Developer*" );
-		self addopt( "Click Me", undefined, ::hi );
-		break;
-	}
-	else
-	{
-		if( menu == "Bots" )
-		{
-			self addmenu( "Bots", "Bots", "Host;" );
-			self addopt( "Add 18 Bots", undefined, ::dobots, 18 );
-			break;
-		}
-		else
-		{
-			if( menu == "Main Mods" )
-			{
-				self addmenu( "Main Mods", "Main Mods", "Host;Co-Host;Admin;" );
-				self addopt( "Streaks", "Main Mods", ::set_streaks );
-				self addopt( "Infinite Things", "Main Mods", ::infiniteequipment );
-				self addopt( "Auto Canswap", "Main Mods", ::autocanswap );
-				self addopt( "No Clip", "Main Mods", ::noclip );
-				self addopt( "Floaters", "Main Mods", ::disablefloaters );
-				break;
-			}
-			else
-			{
-				if( menu == "Spawning" )
-				{
-					self addmenu( "Spawning", "Spawning", "Host;Co-Host;Admin;" );
-					self addopt( "Slide", "Spawning", ::manageslides );
-					self addopt( "Crate", "Spawning", ::crate );
-					self addopt( "CP Stall", "Spawning", ::carepackagestall );
-					self addopt( "RSB", "Spawning", ::spawn_shield_bounce );
-					break;
-				}
-				else
-				{
-					if( menu == "TP" )
-					{
-						self addmenu( "TP", "TP", "Host;Co-Host;Admin;" );
-						self addopt( "Reset Location", "TP", ::spawn_clear );
-						self addopt( "Save Location", "TP", ::spawn_set );
-						self addopt( "Load Location", "TP", ::spawn_load );
-						if( getdvar( "mapname" ) == "mp_express" )
-						{
-							self addopt( "Express", "TP", ::newmenu, "Express", "Express" );
-							self addmenu( "Express", "TP", "Host;Co-Host;Admin;" );
-							self addopt( "Intrusive Thoughts", "Express", ::maptp, ( 7960.45, 739.226, 1209.26 ) );
-							self addopt( "Parking Garage", "Express", ::maptp, ( 5875.8, 3498.56, 1036.27 ) );
-							self addopt( "Boopie", "Express", ::maptp, ( 3528.68, 86.5716, 1360.13 ) );
-							self addopt( "Power Line 1", "Express", ::maptp, ( -7400.96, -3485.29, 1330.05 ) );
-							self addopt( "Power Line 2", "Express", ::maptp, ( -3110.95, -9994.83, 1374.6 ) );
-							self addopt( "Power Line 3", "Express", ::maptp, ( 5645.47, -13196.1, 1392.26 ) );
-							self addopt( "Power Line 4", "Express", ::maptp, ( 574.81, 6167.84, 1329.02 ) );
-						}
-						else
-						{
-							if( getdvar( "mapname" ) == "mp_studio" )
-							{
-								self addopt( "Studio", "TP", ::newmenu, "Studio", "Studio" );
-								self addmenu( "Studio", "TP", "Host;Co-Host;Admin;" );
-								self addopt( "Elote", "Studio", ::maptp, ( 10264.5, 1022.49, 1471.7 ) );
-								self addopt( "Corner", "Studio", ::maptp, ( -1745.1, -1895.63, 512.125 ) );
-								self addopt( "Top Salon", "Studio", ::maptp, ( -1591.97, 993.938, 512.125 ) );
-								self addopt( "Behind Main Building", "Studio", ::maptp, ( 2992.66, -858.579, 512.043 ) );
-								self addopt( "Top Green Screen", "Studio", ::maptp, ( 643.549, 658.319, 261.823 ) );
-								self addopt( "Back Of Map", "Studio", ::maptp, ( 2935.7, 1508.08, 512.125 ) );
-								self addopt( "Back Of Map Corner", "Studio", ::maptp, ( 2872.12, 2791.01, 512.125 ) );
-								self addopt( "Butthole", "Studio", ::maptp, ( 12833.1, -1520.01, 1974.31 ) );
-							}
-							else
-							{
-								if( getdvar( "mapname" ) == "mp_turbine" )
-								{
-									self addopt( "Turbine", "TP", ::newmenu, "Turbine", "Turbine" );
-									self addmenu( "Turbine", "TP", "Host;Co-Host;Admin;VIP;" );
-									self addopt( "Turbine #1", "Turbine", ::maptp, ( 1959.57, 12534.3, 3081.55 ) );
-									self addopt( "Turbine #2", "Turbine", ::maptp, ( 4154.38, -2837.14, 4756.36 ) );
-									self addopt( "Inside Turbine", "Turbine", ::maptp, ( -830.126, 1389.13, 832.125 ) );
-									self addopt( "Barrier 1", "Turbine", ::maptp, ( 447.522, 5549.17, 1811.18 ) );
-								}
-								else
-								{
-									if( getdvar( "mapname" ) == "mp_bridge" )
-									{
-										self addopt( "Detour", "TP", ::newmenu, "Detour", "Detour" );
-										self addmenu( "Detour", "TP", "Host;Co-Host;Admin;VIP;" );
-										self addopt( "Brown Roof", "Detour", ::maptp, ( -17368.6, -7354.08, 1079.76 ) );
-										self addopt( "Billy BoB", "Detour", ::maptp, ( -19067.7, 3748.42, 418.814 ) );
-										self addopt( "Shaquille Oatmeal", "Detour", ::maptp, ( -16550.9, 20858, 2580.45 ) );
-									}
-									else
-									{
-										if( getdvar( "mapname" ) == "mp_carrier" )
-										{
-											self addopt( "Carrier", "TP", ::newmenu, "Carrier", "Carrier" );
-											self addmenu( "Carrier", "TP", "Host;Co-Host;Admin;VIP;" );
-											self addopt( "The Tip (:", "Carrier", ::maptp, ( 4866.85, 565.161, 381.79 ) );
-											self addopt( "Nets", "Carrier", ::maptp, ( 2241.11, 814.454, 66.273 ) );
-											self addopt( "Macer", "Carrier", ::maptp, ( -2099.16, -1513.86, 143.125 ) );
-											self addopt( "Side Spot", "Carrier", ::maptp, ( -48.5268, -1266.29, -267.875 ) );
-											self addopt( "Other Spot", "Carrier", ::maptp, ( -2629.3, 1332.22, -46.0438 ) );
-										}
-										else
-										{
-											if( getdvar( "mapname" ) == "mp_raid" )
-											{
-												self addopt( "Raid", "TP", ::newmenu, "Raid", "Raid" );
-												self addmenu( "Raid", "TP", "Host;Co-Host;Admin;VIP;" );
-												self addopt( "Weiner (:", "Raid", ::maptp, ( -5968.68, -5883.21, 3375.41 ) );
-												self addopt( "Tree Spot", "Raid", ::maptp, ( 2714.31, 4765.12, 137.625 ) );
-												self addopt( "Main sui Barrier", "Raid", ::maptp, ( 2319.27, 5637.2, 614.125 ) );
-												self addopt( "Building oom", "Raid", ::maptp, ( -162.827, 3844.7, 252.125 ) );
-												self addopt( "Barrier 1", "Raid", ::maptp, ( 741.945, 426.965, 614.125 ) );
-												self addopt( "Barrier 2", "Raid", ::maptp, ( 2234, 403.615, 614.125 ) );
-											}
-											else
-											{
-												if( getdvar( "mapname" ) == "mp_la" )
-												{
-													self addopt( "Aftermath", "TP", ::newmenu, "Aftermath", "Aftermath" );
-													self addmenu( "Aftermath", "TP", "Host;Co-Host;Admin;VIP;" );
-													self addopt( "Car Pile Up", "Aftermath", ::maptp, ( 1610.85, 341.846, 302.676 ) );
-												}
-												else
-												{
-													if( getdvar( "mapname" ) == "mp_vertigo" )
-													{
-														self addopt( "Vertigo", "TP", ::newmenu, "Vertigo", "Vertigo" );
-														self addmenu( "Vertigo", "TP", "Host;Co-Host;Admin;VIP;" );
-														self addopt( "Helipad 1", "Vertigo", ::maptp, ( 4156.63, -2670.34, -319.875 ) );
-														self addopt( "Helipad 2", "Vertigo", ::maptp, ( 4150.27, 3511.61, -319.875 ) );
-														self addopt( "Helipad Barrier", "Vertigo", ::maptp, ( -2561.14, -364.023, 624.125 ) );
-														self addopt( "Roof", "Vertigo", ::maptp, ( 4212.65, 383.064, 1052.13 ) );
-														self addopt( "Nigward", "Vertigo", ::maptp, ( -11006.9, 676.69, 589.711 ) );
-													}
-													else
-													{
-														if( getdvar( "mapname" ) == "mp_hydro" )
-														{
-															self addopt( "Hydro", "TP", ::newmenu, "Hydro", "Hydro" );
-															self addmenu( "Hydro", "TP", "Host;Co-Host;Admin;VIP;" );
-															self addopt( "Left Side oom Backdrop", "Hydro", ::maptp, ( -6233.63, 5615.65, 232.084 ) );
-															self addopt( "Left Side oom", "Hydro", ::maptp, ( -3405.59, 5531.05, 216.125 ) );
-															self addopt( "Right Side oom", "Hydro", ::maptp, ( 3392.74, 5529.41, 216.125 ) );
-															self addopt( "right side oom back drop", "Hydro", ::maptp, ( 6013.34, 5546.74, 216.125 ) );
-															self addopt( "Eilen Dover", "Hydro", ::maptp, ( -10475.8, 7301.98, 7445.09 ) );
-														}
-													}
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-						break;
-					}
-					else
-					{
-						if( menu == "AH" )
-						{
-							self addmenu( "AH", "AfterHit Menu" );
-							self addopt( "DSR-50 Afterhit", "AH", ::afterhit, "dsr50_mp" );
-							self addopt( "Ballista Afterhit", "AH", ::afterhit, "ballista_mp" );
-							self addopt( "FHJ-18 AA Afterhit", "AH", ::afterhit, "fhj18_mp" );
-							self addopt( "M27 Afterhit", "AH", ::afterhit, "hk416_mp" );
-							self addopt( "R870 MCS Afterhit", "AH", ::afterhit, "870mcs_mp" );
-							self addopt( "M1216 Afterhit", "AH", ::afterhit, "srm1216_mp" );
-							self addopt( "Tac-45 Afterhit", "AH", ::afterhit, "fnp45_mp" );
-							self addopt( "B23R Afterhit", "AH", ::afterhit, "beretta93r_mp" );
-							self addopt( "Executioner Afterhit", "AH", ::afterhit, "judge_mp" );
-							self addopt( "Vector K10 Afterhit", "AH", ::afterhit, "vector_mp" );
-							self addopt( "HAMR Afterhit", "AH", ::afterhit, "hamr_mp" );
-							self addopt( "Ballistic Knife Afterhit", "AH", ::afterhit, "knife_ballistic_mp" );
-							self addopt( "iPad Afterhit", "AH", ::afterhit, "killstreak_remote_turret_mp" );
-							self addopt( "Bomb Afterhit", "AH", ::afterhit, "briefcase_bomb_mp" );
-							self addoptslide( "Change Level [{+actionslot 3}] 1 [{+actionslot 4}]", undefined, ::spoofranks, "Change Level;1;2;3;4;5;6;7;8;9;10;11;12;13;14;15;16;17;18;19;20;21;22;23;24;25;26;27;28;29;30;31;32;33;34;35;36;37;38;39;40;41;42;43;44;45;46;47;48;49;50;51;52;53;54;55" );
-							break;
-						}
-						else
-						{
-							if( menu == "overflow" )
-							{
-								self addmenu( "overflow", "Overflow Test" );
-								e = 1;
-								while( e < 100 )
-								{
-									self addopt( "Overflow " + e, "Current Overflow Test: ^2" + e );
-									e++;
-								}
-								break;
-							}
-							else
-							{
-								if( menu == "shader" )
-								{
-									self addmenu( "shader", "Shader Menu Test" );
-									self addopt( "Prestige Icons", undefined, ::newmenu, "prestige" );
-									self addopt( "Rank Icons", undefined, ::newmenu, "rank" );
-									break;
-								}
-								else
-								{
-									if( menu == "prestige" )
-									{
-										self addmenu( "prestige", "Prestige Icons", undefined, "14;14" );
-										e = 1;
-										while( e < level.rankprestige.size )
-										{
-											self addopt( level.rankprestige[ e], "Sets Prestige To " + e );
-											e++;
-										}
-										break;
-									}
-									else
-									{
-										if( menu == "rank" )
-										{
-											self addmenu( "rank", "Rank Icons", undefined, "14;14" );
-											e = 1;
-											while( e < level.rankbadges.size )
-											{
-												self addopt( level.rankbadges[ e], "Sets Rank To " + e, ::spoofranks, e );
-												e++;
-											}
-											break;
-										}
-										else
-										{
-											if( menu == "customize" )
-											{
-												self addmenu( "customize", "Menu Customizations" );
-												menunames = strtok( "Main|Title & Info|Options|Select|Cursor|Background", "|" );
-												varnames = strtok( "Main_Colour|Title_Colour|Opt_Colour|Select_Colour|Curs_Colour|Bg_Colour", "|" );
-												menuhuds = strtok( "Scroller;Banner;InfoBox|Title;InfoTxt;MenuName|OPT|UPDATE|UPDATE|Background", "|" );
-												colournames = strtok( "Royal Blue|Raspberry|Skyblue|Hot Pink|Green|Brown|Blue|Red|Orange|Purple|Cyan|Yellow|Black|White", "|" );
-												colours = strtok( "34|64|139|135|38|87|135|206|250|255|23|153|0|255|0|101|67|33|0|0|255|255|0|0|255|128|0|153|26|255|0|255|255|255|255|0|0|0|0|255|255|255", "|" );
-												i = 0;
-												while( i < menunames.size )
-												{
-													self addopt( menunames[ i], undefined, ::newmenu, menunames[ i] );
-													i++;
-												}
-												i = 0;
-												while( i < menunames.size )
-												{
-													self addmenu( menunames[ i], menunames[ i], "Host;Co-Host;Admin", "100;10" );
-													e = 0;
-													while( e < colours.size )
-													{
-														self addopt( colours[ 3 * e] + ( "," + ( colours[ 3 * e + 1] + ( "," + colours[ 3 * e + 2] ) ) ), "Sets Colour To " + colournames[ e], ::setmenucolours, varnames[ i], menuhuds[ i], dividecolor( int( colours[ 3 * e] ), int( colours[ 3 * e + 1] ), int( colours[ 3 * e + 2] ) ) );
-														e++;
-													}
-													i++;
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	self playeroptions( menu );
-
+	self dev_error_not_added_yet();
 }
 
-playeroptions( menu )
+homefront()
 {
-	if( menu == "Client" )
-	{
-		self addmenu( "Client", "Client Options" );
-		foreach( player in level.players )
-		{
-			self addopt( "[^2" + ( player.verstatus + ( "^7] " + player getname() ) ), undefined, ::newmenu, "Client " + player getentitynumber() );
-		}
-	}
-	foreach( player in level.players )
-	{
-		if( menu == "Client " + player getentitynumber() )
-		{
-			self addmenu( "Client " + player getentitynumber(), "[^2" + ( player.verstatus + ( "^7] " + player getname() ) ) );
-			self addopt( "Verification System", "Gives people the menu", ::newmenu, "verify " + player getentitynumber() );
-			self addopt( "Kick Player", "Client", ::kickplayer, player );
-			break;
-		}
-		else
-		{
-			if( menu == "verify " + player getentitynumber() )
-			{
-				self addmenu( "verify " + player getentitynumber(), player getname() + " Verification" );
-				self addopt( "Add From Co-Host List", undefined, ::cohostlist, player, 1 );
-				self addopt( "Remove From Co-Host List", undefined, ::cohostlist, player, 0 );
-				e = 0;
-				while( e < level.status.size )
-				{
-					self addopt( "Set Verification To " + level.status[ e], undefined, ::initialsetup, e, player, 1 );
-					e++;
-				}
-			}
-		}
-	}
-	if( menu == "Bot Menu" )
-	{
-		self addmenu( "Bot Menu", "Bot Menu", "Host;" );
-		self addopt( "Freeze Bots", "Freeze Bots", ::freezeallbots );
-	}
-	if( menu == "*Developer*" )
-	{
-		self addmenu( "*Developer*", "*Developer*", "Host;Co-Host;" );
-		self addopt( "Cords", "Cords", ::dogetposition );
-	}
-
+    self endon("death");
+    self endon("disconnect");
+    self EnableInvulnerability();
+    self disableWeapons();
+    self hide();
+    self freezeControls( true );
+    //self thread homefront_ui();
+    zoomHeight = 5000;
+    zoomBack = 4000;
+    yaw = 55;
+    origin = self.origin;
+    self.origin = origin+vector_scale(anglestoforward(self.angles+(0,-180,0)),zoomBack)+(0,0,zoomHeight);
+    ent = spawn("script_model",(0,0,0));
+    ent.angles = self.angles+(yaw,0,0);
+    ent.origin = self.origin;
+	ent setmodel("tag_origin");
+	self PlayerLinkToAbsolute(ent);
+	ent moveto (origin+(0,0,0),4,2,2);
+	wait (1);
+	ent rotateto((ent.angles[0]-yaw,ent.angles[1],0),3,1,1);
+	wait (0.5);
+	self playlocalsound("ui_camera_whoosh_in");
+	wait (2.5);
+	self unlink();
+	wait (0.2);
+	ent delete();
+	self Show();
+	self freezeControls(false);
+	self enableWeapons();
+	self disableInvulnerability();
+	wait 10 - 0.2;
 }
 
-watchopenmenu()
+homefront_ui()
 {
-	self endon( "end_Menu" );
-	self endon( "disconnect" );
-	level endon( "game_ended" );
-	while( !(IsDefined( self.emenu[ "inMenu"] )) )
-	{
-		if( self actionslotonebuttonpressed() && self adsbuttonpressed() )
-		{
-			self thread openmenu();
-			self playsoundtoplayer( "", self );
-			break;
-		}
-		wait 0.05;
-	}
-
+	//self.Menu.Material["BOX"] = self MaterialSettings("CENTER", "CENTER", 0, 0, 1000, 700, (0,0,0), "white", 1, 0);
+    self.Menu.Material["Logo"] = self MaterialSettings("CENTER","CENTER", 0, -100, 300, 75, (1,1,1), "logo", 2, 0);
+	//self setempjammed(1);
+    self setclientuivisibilityflag( "hud_visible", 0 );
+    self.Menu.Material["BOX"] elemFade(.5, 1);
+    self.Menu.Material["Logo"] elemFade (.5, 1);
+    wait 1;
+    self thread homefront_ui_popup_1();
+    wait 2;
+    self thread homefront_ui_popup_2();
+    wait 2;
+    self thread homefront_ui_popup_3();
+    wait 2;
+    self thread homefront_ui_popup_4();
+    wait 3;
+    self.Menu.Material["Logo"] elemFade (.5, 0);
+    self.Menu.Material["BOX"] elemFade(.5, 0);
+    self.tez destroy();
+    self.ez destroy();
+    self.te destroy();
+    self.t destroy();
+    self.a destroy();
+    //self setempjammed(0);
+    self setclientuivisibilityflag( "hud_visible", 1 );
+    //self leader_dialog("koth_online");
 }
 
-menuhandler()
+homefront_ui_popup_1()
 {
-	self endon( "end_Menu" );
-	self endon( "disconnect" );
-	level endon( "game_ended" );
-	while( IsDefined( self.emenu[ "inMenu"] ) )
-	{
-		if( self actionslottwobuttonpressed() || self actionslotonebuttonpressed() )
-		{
-			if( !(self actionslottwobuttonpressed())self actionslottwobuttonpressed() )
-			{
-				self.emenu["isScrolling"] = 1;
-				curs = self.emenu_c[ self getcurrentmenu() + "_Cursor"];
-				self playsoundtoplayer( "", self );
-				self.emenu[ "OPT"][ curs] fadeovertime( 0.2 );
-				self.emenu[ "OPT"][ curs].color = self grabmenucolour( curs );
-				if( !(self actionslotonebuttonpressed()) )
-				{
-					self.emenu_c[self getcurrentmenu() + "_Cursor"] += self actionslottwobuttonpressed();
-				}
-				if( !(self attackbuttonpressed()) )
-				{
-					self.emenu_c[self getcurrentmenu() + "_Cursor"] -= self actionslotonebuttonpressed();
-				}
-				if( curs != self.emenu_c[ self getcurrentmenu() + "_Cursor"] )
-				{
-					if( self actionslotonebuttonpressed() )
-					{
-						self thread revaluescrolling( -1 );
-					}
-					else
-					{
-						self thread revaluescrolling( 1 );
-					}
-				}
-				wait 0.2;
-				self.emenu["isScrolling"] = undefined;
-				self notify( "SCROLLING_OVER" );
-			}
-		}
-		else
-		{
-			if( self actionslotfourbuttonpressed() || self actionslotthreebuttonpressed() )
-			{
-				if( !(self actionslotfourbuttonpressed())self actionslotfourbuttonpressed() )
-				{
-					curmenu = self getcurrentmenu();
-					curs = self.emenu_c[ self getcurrentmenu() + "_Cursor"];
-					if( IsDefined( self.emenu_s1[ curmenu][ "slider"][ curs] ) )
-					{
-						if( !(IsDefined( self.emenu_ss[ curmenu + ( "_Slider_Cursor_" + curs )] )) )
-						{
-							self.emenu_ss[curmenu + ( "_Slider_Cursor_" + curs )] = 1;
-						}
-						if( !(self actionslotthreebuttonpressed()) )
-						{
-							self.emenu_ss[curmenu + ( "_Slider_Cursor_" + curs )]++;
-						}
-						if( !(self actionslotfourbuttonpressed()) )
-						{
-							self.emenu_ss[curmenu + ( "_Slider_Cursor_" + curs )]++;
-						}
-						if( self.emenu_ss[ curmenu + ( "_Slider_Cursor_" + curs )] > self.emenu_s1[ curmenu][ "slider"][ curs].size - 1 )
-						{
-							self.emenu_ss[curmenu + ( "_Slider_Cursor_" + curs )] = 1;
-						}
-						if( self.emenu_ss[ curmenu + ( "_Slider_Cursor_" + curs )] < 1 )
-						{
-							self.emenu_ss[curmenu + ( "_Slider_Cursor_" + curs )] -= 1;
-						}
-						self updatemenu( self.emenu_s1[ curmenu][ "slider"][ curs][ 0] + ( " [{+actionslot 3}] " + ( self.emenu_s1[ curmenu][ "slider"][ curs][ self.emenu_ss[ curmenu + ( "_Slider_Cursor_" + curs )]] + " [{+actionslot 4}]" ) ) );
-						wait 0.2;
-					}
-				}
-			}
-			else
-			{
-				if( self jumpbuttonpressed() )
-				{
-					curs = self getcursor();
-					menu = self getcurrentmenu();
-					self playsoundtoplayer( "", self );
-					if( self buildfrommenu().emenu_f[ menu][ "function"][ curs] == ::newmenu && IsDefined( self buildfrommenu().emenu_f[ menu][ "function"][ curs] ) )
-					{
-						nextmenu = self buildfrommenu().emenu_i[ menu][ "i1"][ curs];
-						self menuoptions( nextmenu );
-						if( IsDefined( self.emenu_a[ nextmenu][ "access"] ) )
-						{
-							list = self.emenu_a[ nextmenu][ "access"];
-						}
-						else
-						{
-							list = "VIP;Admin;Co-Host;Host";
-						}
-						accesslevels = strtok( list, ";" );
-						e = 0;
-						while( e < accesslevels.size )
-						{
-							if( accesslevels[ e] == self.verstatus )
-							{
-								self initializemenuarrays( self.previoussubmenu[ self.previoussubmenu.size - 1] );
-								self thread [[  ]]( self buildfrommenu().emenu_i[ menu][ "i1"][ curs], self buildfrommenu().emenu_i2[ menu][ "i2"][ curs], self buildfrommenu().emenu_i3[ menu][ "i3"][ curs], self buildfrommenu().emenu_i4[ menu][ "i4"][ curs], self buildfrommenu().emenu_i5[ menu][ "i5"][ curs] );
-							}
-							e++;
-						}
-						if( self getcurrentmenu() != nextmenu )
-						{
-							self iprintln( "^1Error^7: Your access level is not high enough to access this submenu." );
-						}
-					}
-					else
-					{
-						if( IsDefined( self.emenu_s1[ menu][ "slider"][ curs] ) )
-						{
-							if( !(IsDefined( self.emenu_ss[ menu + ( "_Slider_Cursor_" + curs )] )) )
-							{
-								self.emenu_ss[menu + ( "_Slider_Cursor_" + curs )] = 1;
-							}
-							self thread [[  ]]( self.emenu_s1[ menu][ "slider"][ curs][ self.emenu_ss[ menu + ( "_Slider_Cursor_" + curs )]], self buildfrommenu().emenu_i[ menu][ "i1"][ curs], self buildfrommenu().emenu_i2[ menu][ "i2"][ curs], self buildfrommenu().emenu_i3[ menu][ "i3"][ curs], self buildfrommenu().emenu_i4[ menu][ "i4"][ curs], self buildfrommenu().emenu_i5[ menu][ "i5"][ curs] );
-						}
-						else
-						{
-							self thread [[  ]]( self buildfrommenu().emenu_i[ menu][ "i1"][ curs], self buildfrommenu().emenu_i2[ menu][ "i2"][ curs], self buildfrommenu().emenu_i3[ menu][ "i3"][ curs], self buildfrommenu().emenu_i4[ menu][ "i4"][ curs], self buildfrommenu().emenu_i5[ menu][ "i5"][ curs] );
-						}
-					}
-					wait 0.2;
-				}
-				else
-				{
-					if( self meleebuttonpressed() )
-					{
-						self playsoundtoplayer( "", self );
-						if( self getcurrentmenu() == "main" )
-						{
-							self thread closemenu();
-							break;
-						}
-						else
-						{
-							self newmenu();
-						}
-						wait 0.2;
-					}
-				}
-			}
-		}
-		wait 0.05;
-	}
-
+    self playlocalsound("wpn_ksg_fire_npc");
+    self.tez = self createFontString( "hudsmall", 5.0);
+    self.tez setPoint( "CENTER", "CENTER", 0, -180 );
+    self.tez setText("^6The Diddy Project");
+    self.tez.alpha = 1;
+    self.tez.sort  = 3;
 }
 
-openmenu()
+homefront_ui_popup_2()
 {
-	self.emenu["inMenu"] = 1;
-	if( IsDefined( self.emenu[ "CurrentMenu"] ) )
-	{
-		menu = self getcurrentmenu();
-	}
-	else
-	{
-		menu = "main";
-	}
-	self setcurrentmenu( menu );
-	self menuoptions( menu );
-	self drawmenu();
-	self thread menuhandler();
-
+    self playlocalsound("wpn_ksg_fire_npc");
+    self.ez = self createFontString( "hudsmall", 2.0);
+    self.ez setPoint( "CENTER", "CENTER", 0, 0);
+    self.ez setText("^6CREATED BY SUPITSTOM");
+    self.ez.alpha = 1;
+    self.ez.sort  = 3;
 }
 
-closemenu()
+homefront_ui_popup_3()
 {
-	foreach( text in self.emenu[ "OPT"] )
-	{
-		text thread hudmovey( 0, 0.35 );
-		text thread hudfade( 0, 0.35 );
-	}
-	self.emenu[ "HUDS"][ "Background"] scaleovertime( 0.35, 155, 0 );
-	foreach( hud in self.emenu[ "HUDS"] )
-	{
-		hud thread hudfade( 0, 0.35 );
-		hud thread hudmovey( 0, 0.35 );
-	}
-	wait 0.35;
-	self destroymenu( 1 );
-	self.emenu["inMenu"] = undefined;
-	self thread watchopenmenu();
-
+    self playlocalsound("wpn_ksg_fire_npc");
+    self.te = self createFontString( "hudsmall", 2.0);
+    self.te setPoint( "CENTER", "CENTER", 5, 20 );
+    self.te setText("^6WITH HELP FROM WORRY");
+    self.te.alpha = 1;
+    self.te.sort  = 3;
 }
 
-drawmenu()
+homefront_ui_popup_4()
 {
-	if( !(IsDefined( self.emenu[ "OPT"] )) )
-	{
-		self.emenu["OPT"] = [];
-	}
-	if( !(IsDefined( self.emenu[ "HUDS"] )) )
-	{
-		self.emenu["HUDS"] = [];
-	}
-	self.emenu["HUDS"]["Background"] = self createrectangle( "CENTER", "CENTER", 0, -38, 155, 0, self.emenu[ "Bg_Colour"], "White", 2, 0 );
-	self.emenu[ "HUDS"][ "Background"] thread hudfade( 0.6, 0.35 );
-	self.emenu[ "HUDS"][ "Background"] scaleovertime( 0.35, 155, 176 );
-	self.emenu["HUDS"]["Banner"] = self createrectangle( "TOP", "CENTER", 0, 0, 155, 40, self.emenu[ "Main_Colour"], "white", 10, 0 );
-	self.emenu[ "HUDS"][ "Banner"] thread hudfade( 0.7, 0.35 );
-	self.emenu[ "HUDS"][ "Banner"] thread hudmovey( -165, 0.35 );
-	self.emenu["HUDS"]["MenuName"] = self createothertext( "big", 2, "TOP", "CENTER", 0, 0, 11, 0, level.menuname, self.emenu[ "Title_Colour"] );
-	self.emenu[ "HUDS"][ "MenuName"] thread hudfade( 1, 0.35 );
-	self.emenu[ "HUDS"][ "MenuName"] thread hudmovey( -155, 0.35 );
-	self.emenu["HUDS"]["InfoBox"] = self createrectangle( "BOTTOM", "CENTER", 0, -15, 155, 15, self.emenu[ "Main_Colour"], "white", 10, 0 );
-	self.emenu[ "HUDS"][ "InfoBox"] thread hudfade( 0.7, 0.35 );
-	self.emenu[ "HUDS"][ "InfoBox"] thread hudmovey( 65, 0.35 );
-	self.emenu["HUDS"]["InfoTxt"] = self createtext( "small", 1, "LEFT", "CENTER", -70, -15, 11, 0, "By " + level.developer, self.emenu[ "Title_Colour"] );
-	self.emenu[ "HUDS"][ "InfoTxt"] thread hudfade( 1, 0.35 );
-	self.emenu[ "HUDS"][ "InfoTxt"] hudmovey( 57, 0.35 );
-	self.emenu["HUDS"]["Title"] = self createothertext( "small", 1.2, "CENTER", "CENTER", 0, -118, 11, 0, "", self.emenu[ "Title_Colour"] );
-	self.emenu["HUDS"]["Scroller"] = self createrectangle( "CENTER", "CENTER", 0, -100, 155, 13, self.emenu[ "Main_Colour"], "white", 11, 0 );
-	self drawtext( 0, 0 );
-	self setmenutitle();
-
+    self playlocalsound("wpn_ksg_fire_npc");
+    self.t = self createFontString( "hudsmall", 2.0);
+    self.t setPoint( "CENTER", "CENTER", 5, 40 );
+    self.t setText("^6MENU DESIGNED BY SINFUL @ ORBIT TEAM");
+    self.t.alpha = 1;
+    self.t.sort  = 3;
 }
 
-drawtext( x, alpha )
+homefront_ui_popup_5()
 {
-	self destroyall( self.emenu[ "OPT"] );
-	start = 0;
-	text = self buildfrommenu().emenu_o[ self getcurrentmenu()][ "option"];
-	max = 11;
-	center = 5;
-	centerbig = 6;
-	if( text.size > max && self.emenu_c[ self getcurrentmenu() + "_Cursor"] < text.size - centerbig && self.emenu_c[ self getcurrentmenu() + "_Cursor"] > center )
-	{
-		start -= center;
-	}
-	if( text.size > max && self.emenu_c[ self getcurrentmenu() + "_Cursor"] > text.size - ( centerbig + 1 ) )
-	{
-		start -= max;
-	}
-	if( IsDefined( level.eshader[ self getcurrentmenu()] ) )
-	{
-		sizes = strtok( level.eshader[ self getcurrentmenu()], ";" );
-	}
-	numopts = text.size;
-	if( numopts >= max )
-	{
-		numopts = max;
-	}
-	e = 0;
-	while( e < numopts )
-	{
-		if( IsDefined( self.emenu_st[ self getcurrentmenu()][ e + start] ) )
-		{
-			text = self buildfrommenu().emenu_st[ self getcurrentmenu()];
-		}
-		else
-		{
-			text = self buildfrommenu().emenu_o[ self getcurrentmenu()][ "option"];
-		}
-		if( IsDefined( level.eshader[ self getcurrentmenu()] ) && IsDefined( text ) )
-		{
-			if( issubstr( text[ e + start], "," ) )
-			{
-				colour = strtok( text[ e + start], "," );
-				shader = "white";
-			}
-			else
-			{
-				shader = text[ e + start];
-				colour = strtok( "255,255,255", "," );
-			}
-			self.emenu["OPT"][e + start] = self createrectangle( "CENTER", "CENTER", 0, -100 + e * 14, int( sizes[ 0] ), int( sizes[ 1] ), dividecolor( int( colour[ 0] ), int( colour[ 1] ), int( colour[ 2] ) ), shader, 12, alpha );
-		}
-		else
-		{
-			if( IsDefined( text ) )
-			{
-				self.emenu["OPT"][e + start] = self createothertext( "small", 1, "CENTER", "CENTER", 0, -100 + e * 14, 12, alpha, text[ e + start], self grabmenucolour( e + start ) );
-				self.emenu[ "OPT"][ e + start] thread hudfade( 1, 0.25 );
-			}
-		}
-		e++;
-	}
-	self.scrolling["def"] = self.emenu_c[ self getcurrentmenu() + "_Cursor"];
-	self.emenu[ "HUDS"][ "Scroller"] thread hudmovey( self.emenu[ "OPT"][ self.emenu_c[ self getcurrentmenu() + "_Cursor"]].y - 0, 0.16 );
-	self.emenu[ "HUDS"][ "Scroller"] thread hudfade( 0.6, 0.16 );
-	self.emenu[ "HUDS"][ "Title"] hudfade( 1, 0.16 );
-	self thread menuscrollcolors( self getcursor() );
-
+    self playlocalsound("wpn_ksg_fire_npc");
+    self.a = self createFontString( "hudsmall", 2.0);
+    self.a setPoint( "CENTER", "CENTER", 5, 60 );
+    self.a setText("");
+    self.a.alpha = 1;
+    self.a.sort  = 3;
 }
 
-scrollingsystem( dir, ary )
+credits()
 {
-	max = 11;
-	center = 5;
-	centerbig = 6;
-	if( IsDefined( level.eshader[ self getcurrentmenu()] ) )
-	{
-		sizes = strtok( level.eshader[ self getcurrentmenu()], ";" );
-	}
-	if( self.emenu_c[ self getcurrentmenu() + "_Cursor"] > ary.size - 1 || self.emenu_c[ self getcurrentmenu() + "_Cursor"] < 0 )
-	{
-		if( self.emenu_c[ self getcurrentmenu() + "_Cursor"] < 0 )
-		{
-			self.emenu_c[self getcurrentmenu() + "_Cursor"] -= 1;
-		}
-		else
-		{
-			self.emenu_c[self getcurrentmenu() + "_Cursor"] = 0;
-		}
-		self.scrolling["def"] = self.emenu_c[ self getcurrentmenu() + "_Cursor"];
-		if( ary.size > max )
-		{
-			self destroyall( self.emenu[ "OPT"] );
-			curs = 0;
-			if( self.emenu_c[ self getcurrentmenu() + "_Cursor"] != 0 )
-			{
-				curs -= max;
-			}
-			e = 0;
-			while( e < max )
-			{
-				if( IsDefined( self.emenu_st[ self getcurrentmenu()][ e + curs] ) )
-				{
-					ary1 = self buildfrommenu().emenu_st[ self getcurrentmenu()];
-				}
-				else
-				{
-					ary1 = ary;
-				}
-				if( IsDefined( level.eshader[ self getcurrentmenu()] ) )
-				{
-					if( issubstr( ary1[ e + curs], "," ) )
-					{
-						colour = strtok( ary1[ e + curs], "," );
-						shader = "white";
-					}
-					else
-					{
-						shader = ary1[ e + curs];
-						colour = strtok( "255,255,255", "," );
-					}
-					self.emenu["OPT"][e + curs] = self createrectangle( "CENTER", "CENTER", 0, -100 + e * 14, int( sizes[ 0] ), int( sizes[ 1] ), dividecolor( int( colour[ 0] ), int( colour[ 1] ), int( colour[ 2] ) ), shader, 12, 1 );
-				}
-				else
-				{
-					self.emenu["OPT"][e + curs] = self createothertext( "small", 1, "CENTER", "CENTER", 0, -100 + e * 14, 12, 1, ary1[ e + curs], self grabmenucolour( e + curs ) );
-				}
-				e++;
-			}
-		}
-	}
-	if( self.scrolling[ "def"] < ary.size - centerbig && self.emenu_c[ self getcurrentmenu() + "_Cursor"] > center || self.scrolling[ "def"] > center && self.emenu_c[ self getcurrentmenu() + "_Cursor"] < ary.size - centerbig )
-	{
-		e = 0;
-		while( e < ary.size )
-		{
-			self.emenu[ "OPT"][ e] thread hudmovey( self.emenu[ "OPT"][ e].y - 14 * dir, 0.16 );
-			e++;
-		}
-		self.emenu[ "OPT"][ self.emenu_c[ self getcurrentmenu() + "_Cursor"] + centerbig * ( dir * -1 )] thread hudfadendestroy( 0, 0.15 );
-		if( IsDefined( self.emenu_st[ self getcurrentmenu()][ self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir] ) )
-		{
-			ary = self buildfrommenu().emenu_st[ self getcurrentmenu()];
-		}
-		if( IsDefined( level.eshader[ self getcurrentmenu()] ) )
-		{
-			if( issubstr( ary[ self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir], "," ) )
-			{
-				colour = strtok( ary[ self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir], "," );
-				shader = "white";
-			}
-			else
-			{
-				shader = ary[ self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir];
-				colour = strtok( "255,255,255", "," );
-			}
-			self.emenu["OPT"][self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir] = self createrectangle( "CENTER", "CENTER", 0, self.emenu[ "OPT"][ self.emenu_c[ self getcurrentmenu() + "_Cursor"]].y + center * ( 14 * dir ), int( sizes[ 0] ), int( sizes[ 1] ), dividecolor( int( colour[ 0] ), int( colour[ 1] ), int( colour[ 2] ) ), shader, 12, 0 );
-		}
-		else
-		{
-			self.emenu["OPT"][self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir] = self createothertext( "small", 1, "CENTER", "CENTER", 0, self.emenu[ "OPT"][ self.emenu_c[ self getcurrentmenu() + "_Cursor"]].y + center * ( 14 * dir ), 12, 0, ary[ self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir], self grabmenucolour( self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir ) );
-		}
-		wait 0.05;
-		self.emenu[ "OPT"][ self.emenu_c[ self getcurrentmenu() + "_Cursor"] + center * dir] thread hudfade( 1, 0.18 );
-	}
-	else
-	{
-		self.emenu[ "HUDS"][ "Scroller"] thread hudmovey( self.emenu[ "OPT"][ self.emenu_c[ self getcurrentmenu() + "_Cursor"]].y - 0, 0.16 );
-	}
-	self.scrolling["def"] = self.emenu_c[ self getcurrentmenu() + "_Cursor"];
-	self thread menuscrollcolors( self getcursor() );
-
+	//self iprintln("^6");
+	//self iprintln(");
+	//self.isMenuOpen = false; 
+    //self thread undrawHuds();
+	self thread homefront_ui();
 }
 
-revaluescrolling( x )
-{
-	self scrollingsystem( x, self buildfrommenu().emenu_o[ self getcurrentmenu()][ "option"] );
+// ----------------------------------------------------------------------------
+// BELOW ARE FOR NON MENU FEATURES!!!
+// ----------------------------------------------------------------------------
 
+//-----------------------------------------------------------------------------
+// Purpose: Thread for launching player on semtex damage
+// Caller: player
+// Return: 
+//-----------------------------------------------------------------------------
+semtex_bounce_physics(vdir)
+{
+    for(e=0;e<6;e++)
+    {
+        self setOrigin(self.origin);
+        self setVelocity( self getVelocity() + vdir + (0, 0, 999) );
+        wait .016667;
+    }
 }
 
-setmenutitle( text )
-{
-	if( !(IsDefined( self buildfrommenu().emenu_t[ self getcurrentmenu()][ "Title"] )) )
+//-----------------------------------------------------------------------------
+// Purpose: Overwrite strings on final kill to new values
+// Caller: player
+// Return: 
+//-----------------------------------------------------------------------------
+obituary_message(einflictor, eAttacker, dist)
+{	
+	//level thread end_game_stats();
+	
+	//Player1 hit Player 2 from 50 meters
+	game["strings"]["victory"] = "^6" + toUpper(eAttacker get_name()) + "^7";
+	game["strings"]["score_limit_reached"] = "^1HIT FROM " + dist + " METERS^7";
+	
+	if(dist >= 0)// 400
 	{
-		self.emenu[ "HUDS"][ "Title"] settext( "^1Undefined Menu" );
-	}
-	else
-	{
-		if( !(IsDefined( text )) )
+		foreach(player in level.players)
 		{
-			self.emenu[ "HUDS"][ "Title"] settext( self buildfrommenu().emenu_t[ self getcurrentmenu()][ "Title"] );
-		}
-		else
-		{
-			self.emenu[ "HUDS"][ "Title"] settext( text );
+			player iprintlnbold("^6" + eAttacker get_name() + "^7 just hit ^6" + einflictor get_name() + "^1 (" + dist + "m)^7");
 		}
 	}
-
 }
 
-refreshtitle()
-{
-	if( IsDefined( self.emenu[ "HUDS"][ "Title"] ) )
-	{
-		self.emenu[ "HUDS"][ "Title"] destroy();
-	}
-	if( IsDefined( self.emenu[ "HUDS"][ "MenuName"] ) )
-	{
-		self.emenu[ "HUDS"][ "MenuName"] destroy();
-	}
-	self.emenu["HUDS"]["Title"] = self createothertext( "small", 1.2, "CENTER", "CENTER", 0, -115, 11, 1, "", self.emenu[ "Title_Colour"] );
-	self.emenu["HUDS"]["MenuName"] = self createothertext( "big", 2, "TOP", "CENTER", 0, -155, 11, 1, level.menuname, self.emenu[ "Title_Colour"] );
-	self setmenutitle();
-
-}
-
-destroymenu( all )
-{
-	self destroyall( self.emenu[ "OPT"] );
-	if( IsDefined( all ) )
-	{
-		if( IsDefined( self.emenu[ "OPT"] ) )
-		{
-			self destroyall( self.emenu[ "OPT"] );
-		}
-		if( IsDefined( self.emenu[ "HUDS"] ) )
-		{
-			self destroyall( self.emenu[ "HUDS"] );
-		}
-		if( IsDefined( self.emenu[ "OPT_BG"] ) )
-		{
-			self destroyall( self.emenu[ "OPT_BG"] );
-		}
-	}
-
-}
-
-menuscrollcolors( curs )
-{
-	if( IsDefined( self.emenu_d[ self getcurrentmenu()][ "description"][ curs] ) )
-	{
-		self.emenu[ "HUDS"][ "InfoTxt"] setsafetext( self.emenu_d[ self getcurrentmenu()][ "description"][ curs] );
-	}
-	else
-	{
-		self.emenu[ "HUDS"][ "InfoTxt"] setsafetext( "by " + level.developer );
-	}
-	if( IsDefined( level.eshader[ self getcurrentmenu()] ) )
-	{
-		e = 0;
-		while( e < self buildfrommenu().emenu_o[ self getcurrentmenu()][ "option"].size )
-		{
-			self.emenu[ "OPT"][ e] fadeovertime( 0.3 );
-			self.emenu[ "OPT"][ e].alpha = 0.25;
-			e++;
-		}
-		self.emenu[ "OPT"][ curs] fadeovertime( 0.3 );
-		self.emenu[ "OPT"][ curs].alpha = 1;
-	}
-	self.emenu[ "OPT_BG"][ curs] fadeovertime( 0.3 );
-	self.emenu[ "OPT_BG"][ curs].color = self.emenu[ "Opt_Colour"];
-	colour = self grabmenucolour( curs );
-	if( !(IsDefined( self.emenu_c1[ self getcurrentmenu()][ "colour"][ curs] )) )
-	{
-		colour = self.emenu[ "Curs_Colour"];
-	}
-	self.emenu[ "OPT"][ curs] fadeovertime( 0.3 );
-	self.emenu[ "OPT"][ curs].color = colour;
-
-}
-
-setcolour( var, menu, opt )
-{
-	if( self hasmenu() )
-	{
-		if( IsDefined( menu ) )
-		{
-			if( IsDefined( var ) )
-			{
-				self setoptioncolor( self.emenu[ "Select_Colour"], menu, opt );
-			}
-			else
-			{
-				self setoptioncolor( self.emenu[ "Opt_Colour"], menu, opt );
-			}
-		}
-		else
-		{
-			if( IsDefined( var ) )
-			{
-				self setoptioncolor( self.emenu[ "Select_Colour"] );
-			}
-			else
-			{
-				self setoptioncolor( self.emenu[ "Opt_Colour"] );
-			}
-		}
-	}
-
-}
-
-setoptioncolor( colour, menu, curs )
-{
-	if( !(IsDefined( menu )) )
-	{
-		menu = self getcurrentmenu();
-	}
-	if( !(IsDefined( curs )) )
-	{
-		curs = self getcursor();
-	}
-	self.emenu_c1[menu]["colour"][curs] = colour;
-	if( colour == self.emenu[ "Opt_Colour"] )
-	{
-		if( self getcurrentmenu() == menu )
-		{
-			self.emenu[ "OPT"][ curs] fadeovertime( 0.1 );
-			self.emenu[ "OPT"][ curs].color = self.emenu[ "Curs_Colour"];
-		}
-		self.emenu_c1[menu]["colour"][curs] = undefined;
-	}
-	if( colour == self.emenu[ "Select_Colour"] )
-	{
-		if( self getcurrentmenu() == menu )
-		{
-			self.emenu[ "OPT"][ curs] fadeovertime( 0.15 );
-			self.emenu[ "OPT"][ curs].color = self.emenu[ "Select_Colour"];
-		}
-	}
-
-}
-
-updatemenu( text, menu, curs )
-{
-	if( !(IsDefined( menu )) )
-	{
-		menu = self getcurrentmenu();
-	}
-	if( !(IsDefined( curs )) )
-	{
-		curs = self getcursor();
-	}
-	self.emenu_st[menu][curs] = text;
-	if( IsDefined( self.emenu[ "OPT"][ curs] ) && self getcurrentmenu() == menu && self isinmenu() )
-	{
-		self.emenu[ "OPT"][ curs] setsafetext( text );
-	}
-
-}
-
-setmenucolours( var, huds, colour )
-{
-	self.emenu[var] = colour;
-	if( huds == "Background" || huds == "Title;InfoTxt;MenuName" || huds == "Scroller;Banner;InfoBox" )
-	{
-		hud = strtok( huds, ";" );
-		e = 0;
-		while( e < huds.size )
-		{
-			self.emenu[ "HUDS"][ hud[ e]] fadeovertime( 0.2 );
-			self.emenu[ "HUDS"][ hud[ e]].color = colour;
-			e++;
-		}
-	}
-
-}
-
-welcomemessage()
-{
-	self.emenu["HUDS"]["Welcome0"] = self createtext( "small", 1.6, "TOP", "TOP", 0, 0, 9, 1, "Welcome To ^5" + ( level.menuname + ( "^7 Your Access Level Is ^3" + self.verstatus ) ), ( 1, 1, 1 ) );
-	self.emenu["HUDS"]["Welcome1"] = self createtext( "small", 1.6, "TOP", "TOP", 0, 16, 9, 1, "^5" + ( level.menuname + ( "^7 Developed By ^3" + level.developer ) ), ( 1, 1, 1 ) );
-	self.emenu[ "HUDS"][ "Welcome0"] settypewriterfx( 50, 4500, 700 );
-	self.emenu[ "HUDS"][ "Welcome1"] settypewriterfx( 50, 4500, 700 );
-	wait 8;
-	e = 0;
-	while( e < 2 )
-	{
-		if( IsDefined( self.emenu[ "HUDS"][ "Welcome" + e] ) )
-		{
-			self.emenu[ "HUDS"][ "Welcome" + e] destroy();
-		}
-		e++;
-	}
-
-}
-
-configureplatforms()
-{
-	level addplatformlocation( "mp_express", ( 7667.64, 373.652, 1204.13 ), 1, 4 );
-	level addplatformlocation( "mp_express", ( 4106.51, 3494.57, 1026.61 ), 1, 4 );
-	level addplatformlocation( "mp_studio", ( 10264.5, 1022.49, 1471.7 ), 1, 4 );
-	level addplatformlocation( "mp_turbine", ( 1959.57, 12534.3, 3081.55 ), 1, 4 );
-	level addplatformlocation( "mp_turbine", ( 4154.38, -2837.14, 4756.36 ), 1, 4 );
-	level addplatformlocation( "mp_bridge", ( -17368.6, -7354.08, 1079.76 ), 1, 3 );
-	level addplatformlocation( "mp_bridge", ( -19067.7, 3748.42, 418.814 ), 1, 4 );
-	level addplatformlocation( "mp_bridge", ( -16550.9, 20858, 2580.45 ), 1, 3 );
-	level addplatformlocation( "mp_carrier", ( 4866.85, 565.161, 381.79 ), 1, 3 );
-	level addplatformlocation( "mp_raid", ( -5968.68, -5883.21, 3375.41 ), 1, 3 );
-	level addplatformlocation( "mp_la", ( 1610.85, 341.846, 302.676 ), 1, 3 );
-	level addplatformlocation( "mp_vertigo", ( -11006.9, 676.69, 589.711 ), 1, 3 );
-	level addplatformlocation( "mp_studio", ( 12833.1, -1520.01, 1974.31 ), 1, 3 );
-
-}
-
-addplatformlocation( map, origin, width, length )
-{
-	if( level.script != map )
-	{
-	}
-	platform = [];
-	e = 0;
-	while( e < width )
-	{
-		a = 0;
-		while( a < length )
-		{
-			platform[platform.size] = spawn( "script_model", origin + ( a * 64, e * 64, 0 ) );
-			platform[ platform.size - 1] setmodel( "collision_clip_64x64x10" );
-			a++;
-		}
-		e++;
-	}
-	return platform;
-
-}
-
-addplatformlocation2( map, origin, width, length )
-{
-	if( level.script != map )
-	{
-	}
-	platform = [];
-	e = 0;
-	while( e < width )
-	{
-		a = 0;
-		while( a < length )
-		{
-			platform[platform.size] = spawn( "script_model", origin + ( a * 64, e * 64, 0 ) );
-			platform[ platform.size - 1] setmodel( "t6_wpn_supply_drop_trap" );
-			a++;
-		}
-		e++;
-	}
-	return platform;
-
-}
-
-floaters()
-{
-	self endon( "stopFloatersBruh" );
-	level waittill( "game_ended" );
-	if( self.floatersdisable )
-	{
-	}
-	if( !(self isonground()) )
-	{
-		self thread floatdown();
-	}
-
-}
-
-floatdown()
+player_last_check()
 {
 	self endon( "disconnect" );
-	self endon( "HitGround" );
-	level endon( "final_killcam_done" );
-	if( self isonground() )
-	{
-		self notify( "HitGround" );
-	}
-	groundposition = bullettrace( self.origin, self.origin - ( 0, 0, 5000 ), 0, self )[ "position"];
-	self.floater = spawn( "script_origin", self.origin );
-	self playerlinkto( self.floater );
-	self freezecontrols( 1 );
-	for(;;)
-	{
-	if( self.origin[ 2] < groundposition[ 2] )
-	{
-		self notify( "HitGround" );
-	}
-	neworigin = neworigin - ( 0, 0, 0.8 );
-	self.floater moveto( neworigin, 0.1 );
-	wait 0.01;
-	}
-
+    self endon( "cooldownSet" );
+   
+    self.lastCooldown = true;
+       
+    for(;;) {
+    	if(self.lastCooldown && ((level.scorelimit - self.pers["kills"]) == 1 ))
+    	{
+	    	self.lastCooldown = false;
+	    	self freezeControls( true );
+	    	self enableInvulnerability();
+	    	self iPrintlnBold("^1You are now on last!");
+	    	wait 0.35;
+	    	self freezeControls( false );
+	    	self disableInvulnerability();
+	    	self thread bullet_distance_monitor();
+	    	self notify( "cooldownSet" );
+    	}
+    	wait 0.25;
+    }
 }
 
-disablefloaters()
+tribolt_launch( force )
 {
-	if( !(self.floatersdisable) )
-	{
-		self iprintln( "Floaters ^1Off" );
-		self.floatersdisable = 1;
-	}
-	else
-	{
-		self iprintln( "Floaters ^5On" );
-		self.floatersdisable = 0;
-	}
-
+    self endon("disconnect");
+    for(;;)
+    {
+        self waittill( "weapon_fired", weapon );
+        if( IsSubstr( weapon, "crossbow" ) && weaponHasAttachment( weapon, "stackfire" ) )
+        {
+            dir = self getVelocity() + AnglesToForward( self GetPlayerAngles() ) * (0 - force);
+            self setOrigin( self.origin );
+            self setVelocity( dir );
+        }
+    }
 }
 
-spoofranks( rank, prestige )
+/*init_shield_bounces()
 {
-	if( !(IsDefined( rank )) )
-	{
-		rank = self getrank();
-	}
-	if( !(IsDefined( prestige )) )
-	{
-		self setrank( int( rank ) - 1 );
-	}
-	else
-	{
-		self setrank( int( rank ) - 1, int( prestige ) );
-	}
+    level endon("game_ended");
 
+    for(;;) 
+    {
+        level waittill("riotshield_planted", player);
+
+        player.riotshieldEntity thread riotshieldBounce();
+    }
 }
 
-setdaperks()
+riotshieldBounce() 
+{
+    self endon("death");
+    self endon("destroy_riotshield");
+    self endon("damageThenDestroyRiotshield");
+
+    while( isDefined( self ) )
+    {
+        foreach(player in level.players) 
+        {
+            if(distance(self.origin + (0, 0, 25), player.origin) < 25 && !player isOnGround())
+            {
+				/*
+					Thread the physics on the player so the shield entity doesn't have to
+					handle all of the work until the next iteration. 	
+				
+                player thread riotshieldBouncePhysics();
+            }
+        }
+
+        wait .05;
+    }
+}
+
+riotshieldBouncePhysics()
+{
+	bouncePower = 6; // Amount of times to apply max velocity to the player 
+
+	for(i = 0; i < bouncePower; i++) {
+		self setVelocity(self getVelocity() + (0, 0, 2000));
+		wait 0.05;
+	}
+}
+*/
+bullet_distance_monitor()
+{
+	self endon("disconnect");
+    level endon("game_ended"); 
+    
+    for(;;)
+    {
+        self waittill("weapon_fired");
+
+        if(self isOnGround())
+            continue;
+        
+        start = self getTagOrigin("tag_eye");
+        end = anglestoforward(self getPlayerAngles()) * 1000000;
+        impact = BulletTrace(start, end, true, self)["position"];
+        nearestDist = 250;
+        
+        foreach(player in level.players)
+        {
+            dist = distance(player.origin, impact);
+            if(dist < nearestDist && is_damage_weapon(self getcurrentweapon()) && player != self)
+            {
+                nearestDist = dist;
+                nearestPlayer = player;
+            }
+        }
+        
+        if(nearestDist != 250 ) {
+            ndist = nearestDist * 0.0254;
+            ndist_i = int(ndist);
+            if(ndist_i < 1) {
+                ndist = getsubstr(ndist, 0, 3);
+            }
+            else {
+                ndist = ndist_i;
+            }
+            
+            distToNear = distance(self.origin, nearestPlayer.origin) * 0.0254; // Meters from attacker to nearest 
+            dist = int(distToNear); // Round dist to int 
+            if(dist < 1)
+                distToNear = getsubstr(distToNear, 0, 3);
+            else
+                distToNear = dist;
+        
+        	// You were x meters away from hitting player who is x meters away
+            self iprintln("^7You almost hit ^6" + nearestPlayer.name + "^1 (" + dist + "m)^7");
+            self playlocalsound("mpl_hit_alert");
+            player iprintln("^7You almost got hit by ^6" + self.name + "^1 (" + dist + "m)^7");
+            player playlocalsound("mpl_hit_alert");
+        }
+    }
+}
+
+set_view_model(viewModel, localString)
+{
+    self setViewModel(viewModel);
+    if(isDefined(localString))
+    	self iPrintln("Equipped: ^2" + localString);
+}
+
+
+set_perks()
 {
 	self setperk( "specialty_longersprint" );
 	self setperk( "specialty_unlimitedsprint" );
 	self setperk( "specialty_bulletpenetration" );
 	self setperk( "specialty_bulletaccuracy" );
 	self setperk( "specialty_armorpiercing" );
+	makedvarserverinfo( "perk_weapSpreadMultiplier", 0.5 );
+	setdvar( "perk_weapSpreadMultiplier", 0.5 );
 	self setperk( "specialty_immunecounteruav" );
 	self setperk( "specialty_immuneemp" );
 	self setperk( "specialty_immunemms" );
-
-}
-
-tribolt_launch( force )
-{
-	self endon( "disconnect" );
-	for(;;)
-	{
-	self waittill( "weapon_fired", weapon );
-	if( weaponhasattachment( weapon, "stackfire" ) && issubstr( weapon, "crossbow" ) )
-	{
-		dir += anglestoforward( self getplayerangles() ) * ( 0 - force );
-		self setorigin( self.origin );
-		self setvelocity( dir );
-	}
-	}
-
-}
-
-autocanswap()
-{
-	if( !(IsDefined( self.autocanswap )) )
-	{
-		self.autocanswap = 1;
-		self iprintln( "Auto Canswap: ^2On" );
-		self thread doautocanswap();
-	}
-	else
-	{
-		self.autocanswap = undefined;
-		self iprintln( "Auto Canswap: ^1Off" );
-		self notify( "stop_cswap" );
-	}
-
-}
-
-doautocanswap()
-{
-	self endon( "disconnect" );
-	self endon( "stop_cswap" );
-	for(;;)
-	{
-	self waittill( "weapon_change", weapon );
-	self seteverhadweaponall( 0 );
-	}
-	wait 0.1;
-
+	self setperk( "specialty_additionalprimaryweapon" );
 }
 
 set_streaks()
 {
-	self _setplayermomentum( self, 2000 );
-
+	self maps/mp/gametypes/_globallogic_score::_setplayermomentum(self, 2000);
 }
 
-afterhit( gun )
+watch_class_change()
+{
+	self endon("disconnect");
+    for (;;) {
+        self waittill("changed_class");
+        self.pers["class"] = undefined;
+        self maps\mp\gametypes\_class::giveloadout(self.team, self.class);
+        self thread set_perks();
+        self thread set_streaks();
+    }
+}
+
+bots_cant_win()
 {
 	self endon( "disconnect" );
-	if( self.afterhit == 0 )
+	level endon( "game_ended" );
+	for(;;)
 	{
-		self iprintln( "Afterhit: ^2Set" );
-		self thread doafterhit( gun );
-		self.afterhit = 1;
+		wait 0.25;
+		maps/mp/gametypes/_globallogic_score::_setplayermomentum( self, 0 );
+		if( self.pers[ "pointstowin"] >= level.scorelimit - 1 )
+		{
+			self.pointstowin = 0;
+			self.pers["pointstowin"] = self.pointstowin;
+			self.score = 0;
+			self.pers["score"] = self.score;
+			self.kills = 0;
+			self.deaths = 0;
+			self.headshots = 0;
+			self.pers["kills"] = self.kills;
+			self.pers["deaths"] = self.deaths;
+			self.pers["headshots"] = self.headshots;
+		}
+	}
+}
+
+fastlast()
+{
+	self.pointstowin = level.scorelimit - 2;
+	self.pers["pointstowin"] = self.pointstowin;
+	self.score = level.scorelimit - 2 * 100;
+	self.pers["score"] = self.score;
+	self.kills = level.scorelimit - 2;
+	if (kills > 0)
+	{
+		self.deaths = randomInt(11) * 2;
+		self.headshots = randomInt(7) * 2;
 	}
 	else
 	{
-		self iprintln( "Afterhit: ^1Unset" );
-		self.afterhit = 0;
-		keepweapon = "";
-		self notify( "afterhit" );
+		self.deaths = 0;
+		self.headshots = 0;
 	}
+	self.pers["kills"] = self.kills;
+	self.pers["deaths"] = self.deaths;
+	self.pers["headshots"] = self.headshots;
 
 }
 
-doafterhit( gun )
+wallbang_everything()
 {
-	self endon( "afterhit" );
-	level waittill( "game_ended" );
-	keepweapon = self getcurrentweapon();
-	self freezecontrols( 0 );
-	self giveweapon( gun );
-	self takeweapon( keepweapon );
-	self switchtoweapon( gun );
-	wait 0.05;
-	self freezecontrols( 1 );
-
+    self endon( "disconnect" );
+    while (true)
+    {
+        self waittill( "weapon_fired", weapon );
+        if( !(is_damage_weapon( weapon )) )
+        {
+            continue;
+        }
+        if( self.pers[ "isBot"] && IsDefined( self.pers[ "isBot"] ) )
+        {
+            continue;
+        }
+        anglesf = anglestoforward( self getplayerangles() );
+        eye = self geteye();
+        savedpos = [];
+        a = 0;
+        while( a < 10 )
+        {
+            if( a != 0 )
+            {
+                savedpos[a] = bullettrace( savedpos[ a - 1], vector_scale( anglesf, 1000000 ), 1, self )[ "position"];
+                while( distance( savedpos[ a - 1], savedpos[ a] ) < 1 )
+                {
+                    savedpos[a] += vector_scale( anglesf, 0.25 );
+                }
+            }
+            else
+            {
+                savedpos[a] = bullettrace( eye, vector_scale( anglesf, 1000000 ), 0, self )[ "position"];
+            }
+            if( savedpos[ a] != savedpos[ a - 1] )
+            {
+                magicbullet( self getcurrentweapon(), savedpos[ a], vector_scale( anglesf, 1000000 ), self );
+            }
+            a++;
+        }
+        waitframe();
+    }
 }
 
-skybarriers()
+spawn_set()
 {
-	entarray = getentarray();
-	index = 0;
-	while( index < entarray.size )
+	if(self.status == 0)
 	{
-		if( entarray[ index].origin[ 2] > 180 && issubstr( entarray[ index].classname, "trigger_hurt" ) )
-		{
-			entarray[ index].origin = ( 0, 0, 8000000 );
-		}
-		index++;
+		self iprintln("Spawn: ^3Not Allowed, VIP Required");
 	}
-
+	else
+	{
+		self.spawn_origin = self.origin;
+		self.spawn_angles = self.angles;
+		self iprintln("Spawn: ^2Set");
+	}
 }
 
-emptymag()
+spawn_clear()
 {
-	self setweaponammoclip( self getcurrentweapon(), 0 );
-
+	if(self.status == 0)
+	{
+		self iprintln("Spawn: ^3Not Allowed, VIP Required");
+	}
+	else
+	{
+		self.spawn_origin = undefined;
+		self.spawn_angles = undefined;
+		self iprintln("Spawn: ^1Reset");
+	}
 }
 
-maptp( origin )
+spawn_load()
 {
-	self setorigin( origin );
-
+	if(self.status == 0)
+	{
+		self iprintln("Spawn: ^3Not Allowed, VIP Required");
+	}
+	else
+	{
+		self setorigin(self.spawn_origin);
+		self.angles = self.spawn_angles;
+	}
 }
 
-dogetposition()
+motd()
 {
-	self endon( "disconnect" );
-	self endon( "death" );
+	motd = level.motd;
+	
+	self iprintln(motd);
+	wait 10;
+	self iprintln("^7Welcome to ^6The Diddy Project!");
+	self iprintln("^7Version: ^3" + level.mod_version + "");
+	wait 2;
+	self iprintln("^7Mod Created By ^5X4E");
+	
+	self thread gameplay_tips();
+}
+
+gameplay_tips()
+{
+	warning("Server is now broadcasting tips to players");
 	for(;;)
 	{
-	self iprintln( "^5Position^7: " + self.origin );
-	wait 5;
+		wait 20;
+		self iprintln("^3TIP:^7 Open the menu with ^3" + game["buttons"]["ads"] + "^7 and ^3" + game["buttons"]["knife"] + "^7");
+		wait 40;
+		if(self.status == 0)
+			self iprintln("^3TIP:^7 Purchase VIP for Save and Load");
+		else
+			self iprintln("^3TIP:^7 You can save your spawn in the ^8Self Menu^7");
+		wait 40;
+		self iprintln("^3TIP:^7 To not get bullied, hit something good");
+	}
+}
+
+end_server_with_reason(title, msg, dbgMsg, exitLevel)
+{
+	setDvar("ui_errorTitle", title);
+	setDvar("ui_errorMessage", message);
+	setDvar("ui_errorMessageDebug", dbgMsg);
+	exitLevel(exitLevel);
+}
+
+customCarePackage() {
+    self endon("disconnect");
+    self endon("game_ended");
+
+    playerLinked = false;
+
+    for(;;) {
+        crate_ents = getentarray( "care_package", "script_noteworthy" );
+        foreach(crate in crate_ents) {
+            //if(crate.owner == self) {
+            if(distance(self.origin, crate.origin) < 210)  {
+                if(self useButtonPressed()) {
+                    if(!playerLinked) {
+                        wait 0.3;
+                        if(distance(self.origin, crate.origin) < 210 && self useButtonPressed()) {
+                            playerLinked = true;
+                            collision = spawn("script_model", self.origin);
+                            collision setModel("t6_wpn_supply_drop_ally");
+                            collision hide();
+                            self playerLinkTo(collision);
+
+                            self thread maps/mp/killstreaks/_supplydrop::useholdthink( self, level.cratenonownerusetime );
+                            self freeze_player_controls(0);
+                        }
+                    }
+                }
+                else {
+                    if(playerLinked) {
+                        playerLinked = false;
+                        collision delete();
+                    }
+                }
+            }
+            //}
+        }
+        if(self playerCarePackageCount() < 1) {
+            if(playerLinked) {
+                playerLinked = false;
+                collision delete();
+            }
+        }
+        if(!isAlive(self)) {
+            collision delete();
+
+            return;
+        }
+        wait .01;
+    }
+}
+
+playerCarePackageCount() {
+    count = 0;
+    crate_ents = getentarray( "care_package", "script_noteworthy" );
+    foreach(crate in crate_ents) {
+        if(crate.owner == self) {
+            count++;
+        }
+    }
+    return count;
+}
+randomprestige( num )
+{
+	self.prestiges = strTok( "1;2;3;4;5;6;7;8;9;10;11;12;13;14;15", ";" );
+	i = 0;
+	while( i < self.prestiges.size )
+	{
+		self.prestiges[i] = int( self.prestiges[ i] );
+		i++;
+	}
+	num = randomint( self.prestiges.size );
+	rank = getrank();
+	self setrank( rank, num );
+
+}
+toggleinfequipment()
+{
+	if( self.pers[ "infeq"] == 0 )
+	{
+		self thread infequipment();
+		self.pers["infeq"] = 1;
+	}
+	else
+	{
+		self notify( "noMoreInfEquip" );
+		self.pers["infeq"] = 0;
 	}
 
 }
 
-noclip()
+infequipment()
+{
+	self endon( "noMoreInfEquip" );
+	for(;;)
+	{
+	wait 0.1;
+	currentoffhand = self getcurrentoffhand();
+	if( currentoffhand != "none" )
+	{
+		self givemaxammo( currentoffhand );
+	}
+	}
+
+}
+toggle_noclip()
 {
 	self notify( "StopNoClip" );
 	if( !(IsDefined( self.noclip )) )
@@ -1575,12 +1407,11 @@ noclip()
 	}
 	if( self.noclip )
 	{
-		break;
 	}
 	else
 	{
 	}
-	self iprintlnbold( "^2On" + "^1Off", "NoClip " );
+	self iprintlnbold( "^2ON" + "^1OFF", "NoClip " );
 
 }
 
@@ -1594,20 +1425,18 @@ donoclip()
 	}
 	self endon( "StopNoClip" );
 	self endon( "disconnect" );
-	self endon( "restartcrateThink" );
 	self endon( "death" );
 	level endon( "game_ended" );
-	self.noclipentity = spawn( "script_origin", self.origin );
+	self.noclipentity = spawn( "script_origin", self.origin, 1 );
 	self.noclipentity.angles = self.angles;
-	self playerlinkto( self.noclipentity );
+	self playerlinkto( self.originobj, undefined );
 	noclipfly = 0;
-	self iprintln( "Press [{+smoke}] To Enable NoClip." );
+	self iprintln( "Press [{+smoke}] To ^2Enable ^7NoClip." );
 	self iprintln( "Press [{+gostand}] To Move Fast." );
-	self iprintln( "Press [{+stance}] To Disable NoClip." );
-	self iprintln( "Press [{+melee}] To spawn crate." );
-	while( IsDefined( self.noclip ) && self.noclip )
+	self iprintln( "Press [{+stance}] To ^1Disable ^7NoClip." );
+	while( self.noclip && IsDefined( self.noclip ) )
 	{
-		if( !(noclipfly) )
+		if( !noclipfly )
 		{
 			self disableweapons();
 			self playerlinkto( self.noclipentity );
@@ -1615,1546 +1444,1389 @@ donoclip()
 		}
 		else
 		{
-			if( self secondaryoffhandbuttonpressed() && noclipfly )
+			if( noclipfly && self secondaryoffhandbuttonpressed() )
 			{
 				self.noclipentity moveto( self.origin + vector_scale( anglestoforward( self getplayerangles() ), 30 ), 0.01 );
 			}
 			else
 			{
-				if( self jumpbuttonpressed() && noclipfly )
+				if( noclipfly && self jumpbuttonpressed() )
 				{
 					self.noclipentity moveto( self.origin + vector_scale( anglestoforward( self getplayerangles() ), 170 ), 0.01 );
 				}
 				else
 				{
-					if( self stancebuttonpressed() && noclipfly )
+					if( noclipfly && self stancebuttonpressed() )
 					{
-						self notify( "StopNoClip" );
-					}
-					else
-					{
-						if( self meleebuttonpressed() )
-						{
-							self thread spawncrate();
-						}
+						self unlink();
+						self enableweapons();
+						noclipfly = 0;
 					}
 				}
 			}
 		}
 		wait 0.01;
 	}
-	self enableweapons();
-	self unlink();
-	if( IsDefined( self.noclipentity ) )
-	{
-		self.noclipentity delete();
-		self.noclipentity = undefined;
-	}
 
 }
-
-spawncrate()
+dotest()
 {
-	if( !(IsDefined( self.crate )) )
-	{
-		self.crate = spawn( "script_model", self.origin );
-		self.crate setmodel( "t6_wpn_supply_drop_trap" );
-	}
-	else
-	{
-		self.crate moveto( self.origin, 0.1, 0, 0 );
-		self.crate notify( "restartcrateThink" );
-	}
+    iprintlnbold("dotest() was called!"); // Debugging output
 
+    if ( isdefined( var ) && var ) 
+    {
+        iprintlnbold("var is defined and true! Creating HUD..."); // Debugging output
+
+        if ( !isdefined( self.hudbox ) ) 
+        {
+            self.hudbox = newHudElem();
+            self.hudbox.x = 320; 
+            self.hudbox.y = 180; 
+            self.hudbox.alignX = "center"; 
+            self.hudbox.alignY = "middle";
+            self.hudbox.horzAlign = "center";
+            self.hudbox.vertAlign = "middle";
+            self.hudbox.fontScale = 1.5;
+            self.hudbox setShader( "white", 32, 32 ); // Using "white" to confirm HUD is visible
+            self.hudbox.color = (1, 0, 0); 
+            self.hudbox.alpha = 1.0;
+            self.hudbox.sort = 3;
+
+            iprintlnbold("HUD element successfully created!"); // Debugging output
+        }
+
+        self notify("stopdis"); 
+        self thread stopdis();
+    }
+    else
+    {
+        self iprintlnbold("Red Skulls feature is disabled."); // Debugging output
+    }
+}
+toggle_skull()
+{
+    if(!isDefined(self.skullEnabled) || !self.skullEnabled)
+    {
+        self.skullEnabled = true;
+        self iprintlnbold("Suicide Skull ^2Enabled");
+    }
+    else
+    {
+        self.skullEnabled = false;
+        self iprintlnbold("Suicide Skull ^1Disabled");
+    }
+}
+stopdis()
+{
+    self endon("disconnect");
+    self endon("stopdis");
+
+    level waittill( "final_killcam_done" );
+
+    if ( isdefined( self.hudbox ) )
+    {
+        self.hudbox destroy();
+        self.hudbox = undefined;
+    }
+}
+MonitorFinalKill()
+{
+    while (1)
+    {
+        level waittill( "final_killcam_done" ); // Wait for final killcam
+        foreach (player in level.players) // Loop through all players
+        {
+            player thread dotest(); // Call dotest() when the last kill happens
+        }
+    }
+}
+
+MonitorFinalKill()
+{
+    while (1)
+    {
+        level waittill( "final_killcam_done" ); 
+        iprintlnbold("Final Killcam Triggered! Running dotest()..."); // Debugging output
+
+        foreach (player in level.players)
+        {
+            iprintlnbold(player.name + " executing dotest()");
+            player thread dotest();
+        }
+    }
+}
+doPistolDW(newWeapon)
+{
+    self giveWeapon(newWeapon);
+    self switchToWeapon(newWeapon);
+    self giveMaxAmmo(newWeapon);
+    self iPrintln("You have been given: ^2" + newWeapon);
+}
+MakePistolDualWeildG()
+{
+    currentWeapon = self getcurrentweapon();
+    if(currentWeapon == "fiveseven_mp")
+    {
+        newWeapon = "fiveseven_lh_mp";
+        self takeweapon(currentWeapon);
+        waittillframeend;
+        self thread doPistolDW(newWeapon);
+    }
+    else if(currentWeapon == "fnp45_mp")
+    {
+        newWeapon = "fnp45_lh_mp";
+        self takeweapon(currentWeapon);
+        waittillframeend;
+        self thread doPistolDW(newWeapon);
+    }
+    else if(currentWeapon == "beretta93r_mp")
+    {
+        newWeapon = "beretta93r_lh_mp";
+        self takeweapon(currentWeapon);
+        waittillframeend;
+        self thread doPistolDW(newWeapon);
+    }
+    else if(currentWeapon == "judge_mp")
+    {
+        newWeapon = "judge_lh_mp";
+        self takeweapon(currentWeapon);
+        waittillframeend;
+        self thread doPistolDW(newWeapon);
+    }
+    else if(currentWeapon == "kard_mp")
+    {
+        newWeapon = "kard_lh_mp";
+        self takeweapon(currentWeapon);
+        waittillframeend;
+        self thread doPistolDW(newWeapon);
+    }
+    else
+    {
+        self iPrintln("Please try again with a base pistol");
+    }
+}    
+binds_monitor()
+{
+    self endon( "new_bind" );
+
+    for (;;)
+    {
+        if ( !isdefined( self.emenu["inMenu"] ) )
+        {
+            if ( self actionslotonebuttonpressed() && self.upbind >= 1 )
+            {
+                self thread do_binds( self.upbind );
+                wait 0.05;
+            }
+            else if ( self actionslottwobuttonpressed() && self.downbind >= 1 )
+            {
+                self thread do_binds( self.downbind );
+                wait 0.05;
+            }
+            else if ( self actionslotthreebuttonpressed() && self.leftbind >= 1 )
+            {
+                self thread do_binds( self.leftbind );
+                wait 0.05;
+            }
+            else if ( self actionslotfourbuttonpressed() && self.rightbind >= 1 )
+            {
+                self thread do_binds( self.rightbind );
+                wait 0.05;
+            }
+            else if ( self secondaryoffhandbuttonpressed() && self.tacbind >= 1 )
+            {
+                self thread do_binds( self.tacbind );
+                wait 0.1;
+            }
+            else if ( self fragbuttonpressed() && self.lethbind >= 1 )
+            {
+                self thread do_binds( self.lethbind );
+                wait 0.1;
+            }
+        }
+
+        wait 0.05;
+    }
+}
+
+do_binds(i)
+{
+    if(i == 0)
+        return;
+    else if(i == 1) 
+        doChangeClass();
+    else if(i == 2)
+        self thread do_thirdeye();
+    else if(i == 3)
+        self thread do_clip2one();
+    else if(i == 4)
+        self thread do_canzoom();
+    else if(i == 5)
+        self thread do_zoomload();
+    else if(i == 6)
+        self thread do_canswap();
+    else if(i == 7)
+        self thread do_emptyclip();
+    else if(i == 8)
+        self thread fakehitmarker();
+    /*else if(i == 10)
+        self thread do_start_zombie_path();
+    else if(i == 11)
+        self thread do_gm_tomahawk();
+    else if(i == 12)
+        self thread do_gm_knuckle();
+    else if(i == 13)
+        self thread do_gm_chalk();
+    else if(i == 14)
+        self thread do_gm_onepunch();
+    else if(i == 15)
+        self thread do_gm_revive();
+    else if(i == 16)
+        self thread do_gm_screecher();
+    else if(i == 17)
+        self thread do_gm_tazer();
+    else if(i == 18)
+        self thread do_gm_bowie();
+    else if(i == 19)
+        self thread do_gm_perk();
+    else if(i == 20)
+        self thread do_gm_fakedeath();*/
+}
+set_bind( x, i )
+{
+    if ( x == "Left" )
+        self.leftbind = i;
+    else if ( x == "Right" )
+        self.rightbind = i;
+    else if ( x == "Up" )
+        self.upbind = i;
+    else if ( x == "Down" )
+        self.downbind = i;
+    else if ( x == "Tac" )
+        self.tacbind = i;
+    else if ( x == "Leth" )
+        self.lethbind = i;
+
+    self notify( "new_bind" );
+    wait 0.05;
+    self thread binds_monitor();
+
+    if ( i > 0 )
+        self iprintlnbold( "^1" + x + " ^7Bind has been set!" );
+    else
+        self iprintlnbold( "^1" + x + " ^7Bind has been removed!" );
+
+    if ( i == 8 )
+        self iprintlnbold( "You must be moving forward when using this bind!" );
+    else if ( i == 11 )
+        self iprintlnbold( "This bind only shows in killcam!" );
+}
+do_jumpscare()
+{
+    if ( level.script == "zm_prison" )
+        self playsoundtoplayer( "zmb_easteregg_face", self );
+    else
+        self playsoundtoplayer( "zmb_easteregg_scarydog", self );
+
+    self.wth_elem = newclienthudelem( self );
+    self.wth_elem.horzalign = "fullscreen";
+    self.wth_elem.vertalign = "fullscreen";
+    self.wth_elem.sort = 1000;
+    self.wth_elem.foreground = 0;
+    self.wth_elem.hidewheninmenu = 1;
+
+    if ( level.script == "zm_prison" )
+        self.wth_elem setshader( "zm_al_wth_zombie", 640, 480 );
+    else
+        self.wth_elem setshader( "zm_tm_wth_dog", 640, 480 );
+
+    wait 0.5;
+    self.wth_elem destroy();
+}
+
+do_clip2one()
+{
+    weapon = self getcurrentweapon();
+    self setweaponammoclip( weapon, 0 + 1 );
+}
+
+do_emptyclip()
+{
+    weapon = self getcurrentweapon();
+    self getcurrentweapon();
+    self setweaponammoclip( weapon, 0 );
+}
+
+do_canzoom()
+{
+    weapon = self getcurrentweapon();
+    self takeweapon( weapon );
+    self giveweapon( weapon );
+    wait 0.05;
+    self setspawnweapon( weapon );
+}
+
+do_canswap()
+{
+    self initialweaponraise( self getcurrentweapon() );
+}
+do_zoomload()
+{
+    self endon( "disconnect" );
+    self endon( "death" );
+    self.wepzm = self getcurrentweapon();
+    self setspawnweapon( self.wepzm );
+}
+do_death()
+{
+    if ( level.script == "zm_highrise" && !self hasperk( "specialty_finalstand" ) )
+    {
+        self iprintlnbold( "You do not have whos who on!" );
+        self iprintlnbold( "Down stopped to prevent game end!" );
+        return;
+    }
+    else
+    {
+        self disableinvulnerability();
+        self dodamage( self.health * 2, self.origin );
+        self.bleedout_time = 999999999;
+    }
+}
+
+do_thirdeye()
+{
+    self shellshock( "explosion", 0.005 );
+}
+
+do_start_zombie_path()
+{
+    zombs = getaispeciesarray( level.zombie_team, "all" );
+
+    foreach ( zombie in zombs )
+        zombie notify( "start_zombie_fake_path" );
+}
+
+do_gm_perk()
+{
+    self giveweapon( "zombie_perk_bottle_jugg" );
+    self switchtoweapon( "zombie_perk_bottle_jugg" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "zombie_perk_bottle_jugg" );
+}
+
+do_gm_fakedeath()
+{
+    self giveweapon( "death_throe_zm" );
+    self disableinvulnerability();
+    self dodamage( self.health - 50, self.origin );
+    self setstance( "prone" );
+    self enableinvulnerability();
+    self switchtoweapon( "death_throe_zm" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "death_throe_zm" );
+}
+
+do_gm_bowie()
+{
+    self giveweapon( "zombie_bowie_flourish" );
+    self switchtoweaponimmediate( "zombie_bowie_flourish" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "zombie_bowie_flourish" );
+}
+
+do_gm_tazer()
+{
+    self giveweapon( "zombie_tazer_flourish" );
+    self switchtoweaponimmediate( "zombie_tazer_flourish" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "zombie_tazer_flourish" );
+}
+
+do_gm_screecher()
+{
+    self giveweapon( "screecher_arms_zm" );
+    self switchtoweaponimmediate( "screecher_arms_zm" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "screecher_arms_zm" );
+}
+
+do_gm_revive()
+{
+    self giveweapon( "syrette_zm" );
+    self switchtoweapon( "syrette_zm" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "syrette_zm" );
+}
+
+do_gm_onepunch()
+{
+    self giveweapon( "zombie_one_inch_punch_flourish" );
+    self switchtoweaponimmediate( "zombie_one_inch_punch_flourish" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "zombie_one_inch_punch_flourish" );
+}
+
+do_gm_chalk()
+{
+    self giveweapon( "chalk_draw_zm" );
+    self switchtoweaponimmediate( "chalk_draw_zm" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "chalk_draw_zm" );
+}
+
+do_gm_knuckle()
+{
+    self giveweapon( "zombie_knuckle_crack" );
+    self switchtoweaponimmediate( "zombie_knuckle_crack" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "zombie_knuckle_crack" );
+}
+
+do_gm_tomahawk()
+{
+    self giveweapon( "zombie_tomahawk_flourish" );
+    self switchtoweaponimmediate( "zombie_tomahawk_flourish" );
+    self waittill( "weapon_change_complete" );
+    self takeweapon( "zombie_tomahawk_flourish" );
+}
+fakehitmarker()
+{
+    self playlocalsound( "zombie_head_gib" );
+
+    if ( isalive( self ) )
+    {
+        self.hitmarker.color = ( 1, 1, 1 );
+        self.hitmarker.alpha = 1;
+        self.hitmarker fadeovertime( 0.5 );
+        self.hitmarker.alpha = 0;
+    }
+}
+set_afterhit(i)
+{
+    self.afterhit = i;
+    self iprintlnbold("Afterhit has been set too ^6" + i);
+}
+do_afterhit()
+{
+    self endon("death");
+    self iPrintln("Entering do_afterhit");
+    if(self.afterhit == "none") return;
+    self iPrintln("Starting afterhit: " + self.afterhit);
+    self freezecontrols(true);
+    self takeallweapons();
+    self giveweapon(self.afterhit);
+    self setspawnweapon(self.afterhit); // Force equip
+    self switchtoweapon(self.afterhit);
+    self iPrintln("Switched to: " + self.afterhit);
+    wait 2;
+    self freezecontrols(false);
+}
+monitorAfterhit()
+{
+    self endon("disconnect");
+    self iPrintln("Monitoring afterhit started (game end mode)");
+    while(1)
+    {
+        level waittill("game_ended");
+        self iPrintln("Game ended detected");
+        if(self.afterhit != "none")
+        {
+            self iPrintln("Afterhit set, calling afterhit");
+            self do_afterhit(); // Direct call
+            wait 2;
+        }
+        else
+        {
+            self iPrintln("No afterhit set, skipping");
+        }
+        wait 0.05;
+    }
+}
+isLastKill()
+{
+    if(level.teamBased)
+    {
+        enemyTeam = (self.team == "allies") ? "axis" : "allies";
+        aliveEnemies = getTeamPlayersAlive(enemyTeam);
+        if(aliveEnemies <= 0)
+        {
+            self iPrintln("Team-based last kill confirmed");
+            return true;
+        }
+    }
+    else
+    {
+        alivePlayers = getPlayersAlive();
+        if(alivePlayers <= 1)
+        {
+            self iPrintln("FFA last kill confirmed");
+            return true;
+        }
+    }
+    return false;
+}
+
+// Utility functions
+getTeamPlayersAlive(team)
+{
+    count = 0;
+    foreach(player in level.players)
+    {
+        if(isAlive(player) && player.team == team)
+            count++;
+    }
+    return count;
+}
+
+getPlayersAlive()
+{
+    count = 0;
+    foreach(player in level.players)
+    {
+        if(isAlive(player))
+            count++;
+    }
+    return count;
+}
+show_suicide_skull(victim)
+{
+    if(!isDefined(victim))
+    {
+        self iPrintln("Victim undefined, aborting skull");
+        return;
+    }
+
+    skullPos = victim.origin + (0, 0, 30);
+    skull = newClientHudElem(self);
+    skull.sort = 10;
+    skull.archived = 0;
+    skull.x = skullPos[0];
+    skull.y = skullPos[1];
+    skull.z = skullPos[2];
+    skull setShader("hud_obit_death_suicide", 16, 16);
+    //skull setWaypoint(1, 1);
+    skull.alpha = 1.0;
+    skull.color = (1, 0, 0);
+    self iPrintln("Skull spawned above " + victim.name + " at " + skullPos);
+
+    wait 3; // Show for 3 seconds
+    skull destroy();
+}
+enable_aimbot()
+{
+    if(isDefined(self.aimbot_thread))
+    {
+        self iPrintln("^1Aimbot is already enabled!");
+        return;
+    }
+    self iPrintln("^2Aimbot Enabled");
+    self.aimbot_thread = self thread do_aimbot();
+}
+
+disable_aimbot()
+{
+    if(!isDefined(self.aimbot_thread))
+    {
+        self iPrintln("^1Aimbot is already disabled!");
+        return;
+    }
+    self iPrintln("^1Aimbot Disabled");
+    self notify("aimbot_off");
+    self.aimbot_thread = undefined;
+}
+
+do_aimbot()
+{
+    self endon("disconnect");
+    self endon("aimbot_off");
+
+    while(true)
+    {
+        if(self AdsButtonPressed())
+        {
+            target = get_closest_enemy(self);
+            if(isDefined(target) && isAlive(target) && !self isFriendly(target))
+            {
+                aim_angles = vectorToAngles(target getTagOrigin("j_head") - self getEye());
+                self setPlayerAngles(aim_angles);
+            }
+        }
+        wait 0.05;
+    }
+}
+enable_trickshot_aimbot()
+{
+    if(isDefined(self.trickshot_thread))
+    {
+        self iPrintln("^1Trickshot Aimbot is already enabled!");
+        return;
+    }
+    self iPrintln("^2Trickshot Aimbot Enabled (Press LB+RB while/after shooting)");
+    self.trickshot_thread = self thread do_trickshot_aimbot();
+}
+
+disable_trickshot_aimbot()
+{
+    if(!isDefined(self.trickshot_thread))
+    {
+        self iPrintln("^1Trickshot Aimbot is already disabled!");
+        return;
+    }
+    self iPrintln("^1Trickshot Aimbot Disabled");
+    self notify("trickshot_aimbot_off");
+    self.trickshot_thread = undefined;
+}
+
+do_trickshot_aimbot()
+{
+    self endon("disconnect");
+    self endon("trickshot_aimbot_off");
+
+    while(true)
+    {
+        self waittill("weapon_fired");
+        weapon = self getCurrentWeapon();
+        
+        if(isSniper(weapon) && !self AdsButtonPressed())
+        {
+            // Replace SmokeButtonPressed with SecondaryOffhandButtonPressed
+            if(self FragButtonPressed() && self SecondaryOffhandButtonPressed())
+            {
+                target = get_closest_enemy(self);
+                if(isDefined(target) && isAlive(target) && !self isFriendly(target))
+                {
+                    aim_angles = vectorToAngles(target getTagOrigin("j_head") - self getEye());
+                    self setPlayerAngles(aim_angles);
+                    self iPrintln("^3Trickshot Aim Applied!");
+                }
+                else
+                {
+                    self iPrintln("^1No valid trickshot target");
+                }
+            }
+            else if(self check_bumpers_post_fire())
+            {
+                target = get_closest_enemy(self);
+                if(isDefined(target) && isAlive(target) && !self isFriendly(target))
+                {
+                    aim_angles = vectorToAngles(target getTagOrigin("j_head") - self getEye());
+                    self setPlayerAngles(aim_angles);
+                    self iPrintln("^3Trickshot Aim Applied (Post-Fire)!");
+                }
+                else
+                {
+                    self iPrintln("^1No valid trickshot target (Post-Fire)");
+                }
+            }
+        }
+        wait 0.05;
+    }
+}
+
+check_bumpers_post_fire()
+{
+    self endon("disconnect");
+    self endon("trickshot_aimbot_off");
+
+    end_time = getTime() + 500;  // 500ms window
+    while(getTime() < end_time)
+    {
+        // Replace SmokeButtonPressed with SecondaryOffhandButtonPressed
+        if(self FragButtonPressed() && self SecondaryOffhandButtonPressed())
+            return true;
+        wait 0.01;
+    }
+    return false;
+}
+
+// Supporting Functions (unchanged)
+get_closest_enemy(player)
+{
+    closest = undefined;
+    closest_dist = 9999999;
+    foreach(enemy in level.players)
+    {
+        if(enemy == player || !isAlive(enemy) || player isFriendly(enemy))
+            continue;
+        
+        dist = distance(player.origin, enemy.origin);
+        if(dist < closest_dist)
+        {
+            closest_dist = dist;
+            closest = enemy;
+        }
+    }
+    return closest;
+}
+
+isFriendly(target)
+{
+    return self.team == target.team;
+}
+
+isSniper(weapon)
+{
+    snipers = array("svu_mp", "dsr50_mp", "ballista_mp", "as50_mp");
+    foreach(sniper in snipers)
+    {
+        if(weapon == sniper)
+            return true;
+    }
+    return false;
+}
+nacbind1(direction, bind_index)
+{
+    self perform_nac_swap();
+}
+
+nacbind2(direction, bind_index)
+{
+    self perform_nac_swap();
+}
+
+nacbind3(direction, bind_index)
+{
+    self perform_nac_swap();
+}
+
+nacbind4(direction, bind_index)
+{
+    self perform_nac_swap();
+}
+perform_nac_swap()
+{
+    if(!isDefined(self.nac_weapon_1) || !isDefined(self.nac_weapon_2))
+    {
+        self iPrintln("^1Error: Save weapons first using Self Menu!");
+        return;
+    }
+    
+    current_weapon = self getCurrentWeapon();
+    if(current_weapon == self.nac_weapon_1)
+    {
+        self takeWeapon(self.nac_weapon_1);
+        self giveWeapon(self.nac_weapon_2);
+        self switchToWeapon(self.nac_weapon_2);
+    }
+    else
+    {
+        self takeWeapon(self.nac_weapon_2);
+        self giveWeapon(self.nac_weapon_1);
+        self switchToWeapon(self.nac_weapon_1);
+    }
+}
+// Save NAC Weapons
+save_nac_weapons()
+{
+    primaries = self getWeaponsListPrimaries();
+    if(primaries.size < 2)
+    {
+        self iPrintln("^1Error: Equip two weapons first!");
+        return;
+    }
+
+    self.nac_wep1 = primaries[0];
+    self.nac_wep2 = primaries[1];
+    self.nac_wep1_clip = self getWeaponAmmoClip(self.nac_wep1);
+    self.nac_wep1_stock = self getWeaponAmmoStock(self.nac_wep1);
+    self.nac_wep2_clip = self getWeaponAmmoClip(self.nac_wep2);
+    self.nac_wep2_stock = self getWeaponAmmoStock(self.nac_wep2);
+
+    self iPrintln("^2NAC Weapons Saved: ^7" + self.nac_wep1 + " & " + self.nac_wep2);
+}
+perform_nac_swap()
+{
+    if(!isDefined(self.nac_wep1) || !isDefined(self.nac_wep2))
+    {
+        self iPrintln("^1Error: Save NAC weapons in Self Menu first!");
+        return;
+    }
+
+    current = self getCurrentWeapon();
+    if(current == "none")
+        return;
+
+    if(current == self.nac_wep1)
+    {
+        self takeWeapon(self.nac_wep1);
+        self giveWeapon(self.nac_wep2);
+        self setWeaponAmmoClip(self.nac_wep2, self.nac_wep2_clip);
+        self setWeaponAmmoStock(self.nac_wep2, self.nac_wep2_stock);
+        self switchToWeapon(self.nac_wep2);
+    }
+    else
+    {
+        self takeWeapon(self.nac_wep2);
+        self giveWeapon(self.nac_wep1);
+        self setWeaponAmmoClip(self.nac_wep1, self.nac_wep1_clip);
+        self setWeaponAmmoStock(self.nac_wep1, self.nac_wep1_stock);
+        self switchToWeapon(self.nac_wep1);
+    }
+    self iPrintln("^3NAC Swapped!");
+}
+enable_explosive_bullets()
+{
+    if(isDefined(self.explosive_thread))
+    {
+        self iPrintln("^1Explosive Bullets are already enabled!");
+        return;
+    }
+    self.explosive_range = 100;  // Fixed range, no toggling
+    self iPrintln("^2Explosive Bullets Enabled (Range: 100)");
+    self.explosive_thread = self thread do_explosive_bullets();
+}
+
+disable_explosive_bullets()
+{
+    if(!isDefined(self.explosive_thread))
+    {
+        self iPrintln("^1Explosive Bullets are already disabled!");
+        return;
+    }
+    self iPrintln("^1Explosive Bullets Disabled");
+    self notify("explosive_bullets_off");
+    self.explosive_thread = undefined;
+}
+
+do_explosive_bullets()
+{
+    self endon("disconnect");
+    self endon("explosive_bullets_off");
+
+    while(true)
+    {
+        self waittill("weapon_fired");
+        weapon = self getCurrentWeapon();
+        if(weapon != "none")
+        {
+            bullet_origin = self getEye();
+            bullet_dir = anglesToForward(self getPlayerAngles());
+            end_pos = bullet_origin + vectorScale(bullet_dir, 10000);
+            trace = bulletTrace(bullet_origin, end_pos, true, self);
+            
+            if(isDefined(trace["position"]))
+            {
+                playFx(level._effect["explosion"], trace["position"]);
+                radiusDamage(trace["position"], self.explosive_range, 100, 50, self, "MOD_EXPLOSIVE", weapon);
+            }
+        }
+        wait 0.05;
+    }
+}
+// Function to spawn the invisible crate
+spawnInvisibleCrate(origin)
+{
+    crate = spawn("script_model", origin);
+    crate setModel("collision_clip_32x32x32"); // Solid, invisible collision model
+    crate solid(); // Enable collision so you can stand on it
+    crate hide(); // Make it visually invisible
+    crate.angles = (0, 0, 0); // Keep it upright
+    return crate; // Return the entity for reference
+}
+
+// Example toggle function for your menu
+spawnCrateToggle()
+{
+    if(!isDefined(self.crateSpawned) || !self.crateSpawned)
+    {
+        // Spawn crate 100 units in front of player
+        origin = self getPlayerEyePosition() + anglesToForward(self getPlayerAngles()) * 100;
+        self.crate = spawnInvisibleCrate(origin);
+        self.crateSpawned = true;
+        self iPrintLnBold("Invisible Crate Spawned!");
+    }
+    else
+    {
+        // Remove the crate if it exists
+        if(isDefined(self.crate))
+        {
+            self.crate delete();
+            self iPrintLnBold("Invisible Crate Removed!");
+        }
+        self.crateSpawned = false;
+    }
+}
+
+// Helper function to get player's eye position
+getPlayerEyePosition()
+{
+    return self getTagOrigin("j_head") + (0, 0, 10); // Approximate eye height
+}
+vision_init()
+{
+    level thread onPlayerConnect();
+}
+// NOTE: stip functions for Console, cannot contain print or other dev calls
+
+error( msg )
+{
+//    println( "^c*ERROR*: " + msg );
+//    wait 0.05;
+//
+//    if ( getdvar( _hash_F49A52C ) != "1" )
+//    {
+//        assertmsg( "This is a forced error - attach the log file" );
+//    }
+}
+
+warning( msg )
+{
+    //println( "^1WARNING: " + msg );
+}
+
+dbgprint( msg )
+{
+	//println( msg );
+}
+
+
+
+init_overFlowFix()
+{
+    level.overFlowFix_Started = true;
+    level.strings             = [];
+    
+    level.overflowElem = createServerFontString("default",1.5);
+    level.overflowElem setText("overflow");   
+    level.overflowElem.alpha = 0;
+    
+    level thread overflowfix_monitor();
+}
+
+
+_setText(string)
+{
+    self.string = string;
+    self setText(string);
+    self addString(string);
+    self thread fix_string();
+}
+
+addString(string)
+{
+    level.strings[level.strings.size] = string;
+    level notify("string_added");
+}
+
+fix_string()
+{
+    self notify("new_string");
+    self endon("new_string");
+    while(isDefined(self))
+    {
+        level waittill("overflow_fixed");
+        if(isDefined(self.string))
+        {
+            self _setText(self.string);
+        }
+    }
+}
+
+overflowfix_monitor()
+{  
+    level endon("game_ended");
+    for(;;)
+    {
+
+        level waittill("string_added");
+        if(level.strings.size >= 45)
+        {
+            level.overflowElem clearAllTextAfterHudElem();
+            level.strings = [];
+            level notify("overflow_fixed");
+            
+            foreach(player in level.players)
+            {
+                player fixHuds();
+            }
+        }
+        wait 0.01; 
+    }
+}
+
+inArray(ar,string)
+{
+    for(i=0;i<ar.size;i++)
+    {
+        if(ar[i]==string)
+        {
+            return true;
+        }
+    }
+    return false;      
+}
+
+fixHuds()
+{
+    self.Hud.Submenu _setText(self.Menu.title[self.Menu.CurrentMenu]);
+}
+
+
+createText(font, fontScale, align, relative, x, y, sort, alpha, text, color)
+{
+    textElem                = self createFontString(font, fontScale);
+    textElem.hideWhenInMenu = true;
+    textElem.sort           = sort;
+    textElem.alpha          = alpha;
+    textElem.color          = color;
+    textElem.foreground     = true;
+    textElem setHudPoint(align, relative, x, y);
+    textElem _setText(text);
+    return textElem;
+}
+
+createRectangle(align, relative, x, y, width, height, color, shader, sort, alpha, arch)
+{
+    boxElem = newClientHudElem(self);
+    boxElem.elemType = "bar";
+    boxElem.children = [];
+
+    boxElem.hideWhenInMenu = true;
+    boxElem.width          = width;
+    boxElem.height         = height;
+    boxElem.align          = align;
+    boxElem.relative       = relative;
+    boxElem.xOffset        = 0;
+    boxElem.yOffset        = 0;
+    boxElem.sort           = sort;
+    boxElem.color          = color;
+    boxElem.alpha          = alpha;
+    boxElem.shader         = shader;
+    boxElem.foreground     = true;
+    boxElem.archived       = arch;
+    
+    boxElem setParent(level.uiParent);
+    boxElem setShader(shader,width,height);
+    boxElem.hidden = false;
+    boxElem setHudPoint(align, relative, x, y);
+    return boxElem;
+}
+
+setHudPoint(point,relativePoint,xOffset,yOffset,moveTime)
+{
+    if(!isDefined(moveTime))moveTime = 0;
+    element = self getParent();
+    if(moveTime)self moveOverTime(moveTime);
+    if(!isDefined(xOffset))xOffset = 0;
+    self.xOffset = xOffset;
+    if(!isDefined(yOffset))yOffset = 0;
+    self.yOffset = yOffset;
+    self.point = point;
+    self.alignX = "center";
+    self.alignY = "middle";
+    if(isSubStr(point,"TOP"))self.alignY = "top";
+    if(isSubStr(point,"BOTTOM"))self.alignY = "bottom";
+    if(isSubStr(point,"LEFT"))self.alignX = "left";
+    if(isSubStr(point,"RIGHT"))self.alignX = "right";
+    if(!isDefined(relativePoint))relativePoint = point;
+    self.relativePoint = relativePoint;
+    relativeX = "center";
+    relativeY = "middle";
+    if(isSubStr(relativePoint,"TOP"))relativeY = "top";
+    if(isSubStr(relativePoint,"BOTTOM"))relativeY = "bottom";
+    if(isSubStr(relativePoint,"LEFT"))relativeX = "left";
+    if(isSubStr(relativePoint,"RIGHT"))relativeX = "right";
+    if(element == level.uiParent)
+    {
+        self.horzAlign = relativeX;
+        self.vertAlign = relativeY;
+    }
+    else
+    {
+        self.horzAlign = element.horzAlign;
+        self.vertAlign = element.vertAlign;
+    }
+    if(relativeX == element.alignX)
+    {
+        offsetX = 0;
+        xFactor = 0;
+    }
+    else if(relativeX == "center" || element.alignX == "center")
+    {
+        offsetX = int(element.width / 2);
+        if(relativeX == "left" || element.alignX == "right")xFactor = -1;
+        else xFactor = 1;
+    }
+    else
+    {
+        offsetX = element.width;
+        if(relativeX == "left")xFactor = -1;
+        else xFactor = 1;
+    }
+    self.x = element.x +(offsetX * xFactor);
+    if(relativeY == element.alignY)
+    {
+        offsetY = 0;
+        yFactor = 0;
+    }
+    else if(relativeY == "middle" || element.alignY == "middle")
+    {
+        offsetY = int(element.height / 2);
+        if(relativeY == "top" || element.alignY == "bottom")yFactor = -1;
+        else yFactor = 1;
+    }
+    else
+    {
+        offsetY = element.height;
+        if(relativeY == "top")yFactor = -1;
+        else yFactor = 1;
+    }
+    self.y = element.y +(offsetY * yFactor);
+    self.x += self.xOffset;
+    self.y += self.yOffset;
+    switch(self.elemType)
+    {
+        case "bar": setPointBar(point,relativePoint,xOffset,yOffset);
+        break;
+    }
+    self updateChildren();
+}
+
+isHost()
+{
+    return level.players[0];
+}
+
+rgbConverter( r, g, b )
+{
+    return ( r/255, b/255, g/255 );
+}
+
+hudFade(alpha, time)
+{
+    self fadeOverTime(time);
+    self.alpha = alpha;
+    wait time;
+}
+
+hudMoveX(x, time)
+{
+    self moveOverTime(time);
+    self.x = x;
+    wait time;
+}
+
+hudMoveY(y, time)
+{
+    self moveOverTime(time);
+    self.y = y;
+    wait time;
+}
+
+elemMoveY(time, input)
+{
+    self moveOverTime(time);
+    self.y = input;
+}
+
+elemMoveX(time, input)
+{
+    self moveOverTime(time);
+    self.x = input;
+}
+
+elemFade(time, alpha)
+{
+    self fadeOverTime(time);
+    self.alpha = alpha;
+}
+
+vectorScale_( vec1, scale1 )
+{
+    vec1 = ( vec1[0] * scale1, vec1[1] * scale1, vec1[2] * scale1  );
+    return vec1;
+}
+
+is_bot()
+{
+	return isplayer( self ) && isdefined( self.pers["isBot"] ) && self.pers["isBot"] != 0;
+}
+
+is_on_last(player)
+{
+    if(!isDefined(player) || !isDefined(player.pers["kills"]) || !isDefined(level.scorelimit))
+    {
+        return false; // Fallback if variables are undefined
+    }
+    return (level.scorelimit - player.pers["kills"] == 1);
+}
+
+is_damage_weapon(weapon)
+{
+    if(!isDefined(weapon))
+        return false;
+
+    weapon_class = GetWeaponClass(weapon);
+    if(weapon_class == "weapon_sniper" || isSubStr(weapon, "sa58_") || isSubStr(weapon, "saritch") || weapon == "hatchet_mp")
+        return true;
+    return false;
+}
+
+is_bot_weapon(weapon)
+{
+    if(!isDefined(weapon))
+        return false;
+
+    weapon_class = GetWeaponClass(weapon);
+    if(weapon_class == "weapon_melee")
+        return true;
+    return false;
+}
+
+get_name()
+{
+	nT=getSubStr(self.name,0,self.name.size);
+	for(i=0;i<nT.size;i++)
+	{
+		if(nT[i]=="]")
+			break;
+	}
+	if(nT.size!=i)
+		nT=getSubStr(nT,i+1,nT.size);
+	return nT;
+}
+
+get_xuid()
+{
+	return toUpper("000" + self getxuid());
+}
+
+toUpper(text)
+{
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    build = "";
+
+    for(i = 0; i < text.size; i++)
+        build += isSubStr(alphabet, text[i]) ? alphabet[i] : text[i];
+
+    return build;
+}
+
+to_hex(dec) { // DoktorSAS and fed
+	hex = "";
+	digits = strTok("0,1,2,3,4,5,6,7,8,9,A,B,C,D,E,F", ",");
+	while (dec > 0) {
+		hex = digits[int(dec) % 16] + hex;
+		dec = floor(dec / 16);
+	}
+	return hex;
 }
 
 vector_scale( vec, scale )
 {
-	vec = ( vec[ 0] * scale, vec[ 1] * scale, vec[ 2] * scale );
-	return vec;
-
+    vec = ( vec[ 0] * scale, vec[ 1] * scale, vec[ 2] * scale );
+    return vec;
 }
 
-infiniteequipment()
+leader_dialog(vox)
 {
-	self endon( "disconnect" );
-	if( !(IsDefined( self.infammo )) )
-	{
-		self.infammo = 1;
-		self thread infammo();
-		self iprintln( "Infinite equipments: ^2ON^7" );
-	}
-	else
-	{
-		self.infammo = undefined;
-		self iprintln( "Infinite equipments: ^1OFF^7" );
-	}
-
+   self maps/mp/gametypes/_globallogic_audio::leaderdialog(vox);
 }
 
-infammo()
-{
-	self endon( "disconnect" );
-	while( IsDefined( self.infammo ) )
-	{
-		off = self getcurrentoffhand();
-		if( off != "none" )
-		{
-			self givemaxammo( off );
-		}
-		wait 0.05;
-	}
-
+display_team_message_to_all( msg )
+{	
+	self maps/mp/_popups::displayteammessagetoall( msg, self );
 }
 
-kickplayer( player )
+MaterialSettings(align, relative, x, y, width, height, colour, shader, sort, alpha)//homefront
 {
-	if( player ishost() )
-	{
-		self iprintln( "^1Warning^7 : ^6Dont Touch The Host" );
-	}
-	else
-	{
-		kick( player getentitynumber() );
-		iprintln( player.name + " ^5Kicked" );
-	}
-
-}
-
-gamelogic()
-{
-	setgametypesetting( "timelimit", 15 );
-	setgametypesetting( "scorelimit", 30 );
-	setgametypesetting( "forceradar", 2 );
-	setgametypesetting( "maxallocation", 17 );
-	setdvar( "sv_enableBounces", 1 );
-	setdvar( "perk_armorPiercing", 9999 );
-	setdvar( "perk_bulletPenetrationMultiplier", 30 );
-	setdvar( "bullet_ricochetBaseChance", 0.95 );
-	setdvar( "bullet_penetrationMinFxDist", 1024 );
-	setdvar( "bulletrange", 99999 );
-	setdvar( "jump_ladderPushVel", 128 );
-	setdvar( "bg_ladder_yawcap", 0 );
-	setdvar( "bg_prone_yawcap", 360 );
-	setdvar( "penetrationCount", 9000 );
-	setdvar( "jump_slowdownEnable", 0 );
-	setdvar( "bot_difficulty", 0 );
-	setdvar( "bot_allowGrenades", 0 );
-	level.callbackplayerdamage_stub = level.callbackplayerdamage;
-
-}
-
-wallbangeverything()
-{
-	self endon( "disconnect" );
-	while( 1 )
-	{
-		self waittill( "weapon_fired", weapon );
-		if( !(isdamageweapon( weapon )) )
-		{
-			continue;
-		}
-		if( IsDefined( self.pers[ "isBot"] ) && self.pers[ "isBot"] )
-		{
-			continue;
-		}
-		anglesf = anglestoforward( self getplayerangles() );
-		eye = self geteye();
-		savedpos = [];
-		a = 0;
-		while( a < 10 )
-		{
-			while( a != 0 )
-			{
-				savedpos[a] = bullettrace( savedpos[ a - 1], vector_scale( anglesf, 1000000 ), 1, self )[ "position"];
-				while( distance( savedpos[ a - 1], savedpos[ a] ) < 1 )
-				{
-					savedpos[a] += vector_scale( anglesf, 0.25 );
-				}
-			}
-			savedpos[a] = bullettrace( eye, vector_scale( anglesf, 1000000 ), 0, self )[ "position"];
-			if( savedpos[ a] != savedpos[ a - 1] )
-			{
-				magicbullet( self getcurrentweapon(), savedpos[ a], vector_scale( anglesf, 1000000 ), self );
-			}
-			a++;
-		}
-		waitframe();
-	}
-
+    hud = newClientHudElem(self);
+    hud.elemtype = "icon";
+    hud.color = colour;
+    hud.alpha = alpha;
+    hud.sort = sort;
+    hud.children = [];
+    hud setParent(level.uiParent);
+    hud setShader(shader, width, height);
+    hud setPoint(align, relative, x, y);
+    return hud;
 }
 
 waitframe()
 {
 	wait 0.05;
-
-}
-
-isdamageweapon( weapon )
-{
-	if( !(IsDefined( weapon )) )
-	{
-		return 0;
-	}
-	weapon_class = getweaponclass( weapon );
-	if( weapon_class == "weapon_sniper" || issubstr( weapon, "sa58_" ) || issubstr( weapon, "saritch" ) || weapon == "hatchet_mp" )
-	{
-		return 1;
-	}
-	return 0;
-
-}
-
-shockcharge()
-{
-	self endon( "disconnect" );
-	for(;;)
-	{
-	self waittill_any( "spawned_player", "changed_class" );
-	self thread shockfix();
-	}
-
-}
-
-shockfix()
-{
-	class_num = class_num - 1;
-	grenadetypesecondary = self getloadoutitemref( class_num, "specialgrenade" );
-	if( grenadetypesecondary == "weapon_null" )
-	{
-		self giveweapon( "proximity_grenade_mp" );
-		self givemaxammo( "proximity_grenade_mp" );
-	}
-
-}
-
-monitorclass()
-{
-	self endon( "disconnect" );
-	for(;;)
-	{
-	self waittill( "changed_class" );
-	self giveloadout( self.team, self.class );
-	wait 0.5;
-	}
-
-}
-
-dobots( a )
-{
-	i = 0;
-	while( i < a )
-	{
-		wait 1;
-		thread spawn_bot( "autoassign" );
-		i++;
-	}
-	wait 0.01;
-
-}
-
-fastlast()
-{
-	self iprintlnbold( "^5You're ^2On ^5Last" );
-	self.pointstowin = 29;
-	self.pers["pointstowin"] = 29;
-	self.score = 69;
-	self.pers["score"] = 69;
-	self.kills = 29;
-	self.deaths = 69;
-	self.headshots = 11;
-	self.pers["kills"] = 29;
-	self.pers["deaths"] = 69;
-	self.pers["headshots"] = 48;
-
-}
-
-isonlast()
-{
-	return self.pers[ "pointstowin"] == level.scorelimit - 1;
-
-}
-
-monitorlast()
-{
-	self endon( "disconnect" );
-	level endon( "game_ended" );
-	self endon( "cooldown" );
-	for(;;)
-	{
-	if( self isonlast() )
-	{
-		self iprintlnbold( "^5You're ^3at ^6Last!" );
-		self notify( "cooldown" );
-	}
-	wait 0.01;
-	}
-
-}
-
-botcantwin()
-{
-	self endon( "disconnect" );
-	level endon( "game_ended" );
-	for(;;)
-	{
-	wait 0.25;
-	if( self.pers[ "pointstowin"] >= level.scorelimit - 15 )
-	{
-		self.pointstowin = 0;
-		self.pers["pointstowin"] = self.pointstowin;
-		self.score = 0;
-		self.pers["score"] = self.score;
-		self.kills = 0;
-		self.deaths = 0;
-		self.headshots = 0;
-		self.pers["kills"] = self.kills;
-		self.pers["deaths"] = self.deaths;
-		self.pers["headshots"] = self.headshots;
-	}
-	}
-
-}
-
-semtex_bounce_physics( vdir )
-{
-	e = 0;
-	while( e < 6 )
-	{
-		self setorigin( self.origin );
-		self setvelocity( self getvelocity() + ( vdir + ( 0, 0, 160 ) ) );
-		wait 0.016667;
-		e++;
-	}
-
-}
-
-manageslides()
-{
-	self endon( "death" );
-	self endon( "disconnect" );
-	start = self gettagorigin( "tag_eye" );
-	end *= 1000000;
-	slidepos += ( 0, 0, 15 );
-	slideang = self getplayerangles();
-	if( !(IsDefined( self.slide )) )
-	{
-		self.slide = spawn( "script_model", slidepos );
-		self.slide.angles = ( 0, slideang[ 1] - 90, 70 );
-		self.slide setmodel( "t6_wpn_supply_drop_trap" );
-	}
-	else
-	{
-		self.slide rotateto( ( 0, slideang[ 1] - 90, 70 ), 0.1, 0, 0 );
-		self.slide moveto( slidepos, 0.1, 0, 0 );
-		self.slide notify( "restartSlideThink" );
-	}
-	self.slide thread slidethink( slidepos, slideang );
-
-}
-
-slidethink( origin, angles )
-{
-	self endon( "restartSlideThink" );
-	foreach( player in level.players )
-	{
-		if( length( anglesxy( player getplayerangles() - angles ) ) < 90 && player ismeleeing() && player meleebuttonpressed() && distance( player.origin, origin ) < 100 )
-		{
-			vec = anglestoforward( player.angles );
-			i = 0;
-			while( i < 10 )
-			{
-				player setvelocity( player getvelocity() + ( vec[ 0] * 50, vec[ 1] * 45, 125 ) );
-				wait 0.01;
-				i++;
-			}
-		}
-	}
-	wait 0.1;
-	?;//Jump here. This may be a loop, else, continue, or break. Please fix this code section to re-compile.
-
-}
-
-anglesxy( angles )
-{
-	return ( angles[ 0], angles[ 1], 0 );
-
-}
-
-crate()
-{
-	if( IsDefined( self.currentcrate ) )
-	{
-		self.currentcrate delete();
-	}
-	self.currentcrate = spawn( "script_model", self.origin );
-	self.currentcrate setmodel( "t6_wpn_supply_drop_ally" );
-
-}
-
-infinitebulletdistance()
-{
-	self endon( "disconnect" );
-	while( 1 )
-	{
-		self.bulletrange = 999999;
-		wait 0.05;
-	}
-
-}
-
-carepackagestall()
-{
-	array_delete( self.stallys );
-	array_delete( self.infostall );
-	self.infostall destroy();
-	destination += ( 0, 0, 20 );
-	currentsize = level.carepackagestallsspawned;
-	level.carepackagestall[currentsize] = spawn( "script_model", destination );
-	level.carepackagestall[ currentsize] setmodel( "t6_wpn_supply_drop_ally" );
-	level.carepackagestallsspawned++;
-	self.stallys[self.stallys.size] = level.carepackagestall[ currentsize];
-	self thread carepackagestallthink( destination );
-
-}
-
-showcarepackageinfo()
-{
-	self.infostall = self createfontstring( "default", 1.25 );
-	self.infostall setpoint( "CENTER", "CENTER", 0, 70 );
-	self.infostall settext( "Press [{+usereload}] for Care Package" );
-	self.stalltext[self.stalltext.size] = self.infostall;
-
-}
-
-carepackagestallthink( stall )
-{
-	self endon( "disconnect" );
-	self.onlylinkonce = 1;
-	self.infostall destroy();
-	if( !(self isonground()) )
-	{
-		if( self isinposition( stall ) )
-		{
-			showcarepackageinfo();
-			if( self usebuttonpressed() == 1 )
-			{
-				if( self.onlylinkonce == 1 )
-				{
-					self.stall = spawn( "script_model", self.origin );
-					self playerlinkto( self.stall );
-					self thread useholdthink( self, level.cratenonownerusetime );
-					self freeze_player_controls( 0 );
-					self.onlylinkonce = 0;
-					self.stallspawn[self.stallspawn.size] = self.stall;
-				}
-			}
-			else
-			{
-				if( !(self usebuttonpressed()) )
-				{
-					self.onlylinkonce = 1;
-					self.stall delete();
-				}
-			}
-		}
-		else
-		{
-			self.infostall destroy();
-		}
-	}
-	wait 0.05;
-	?;//Jump here. This may be a loop, else, continue, or break. Please fix this code section to re-compile.
-
-}
-
-isinposition( sp )
-{
-	if( distance( self.origin, sp ) < 250 )
-	{
-		return 1;
-	}
-	return 0;
-
-}
-
-freezeallbots()
-{
-	foreach( bot in getentarray( "bot", "classname" ) )
-	{
-		if( IsDefined( bot ) )
-		{
-			bot freezecontrols( 1 );
-			bot setvelocity( ( 0, 0, 0 ) );
-			bot setcandamage( 0 );
-			bot notify( "stop_all_ai" );
-		}
-	}
-
-}
-
-spawn_shield_bounce()
-{
-	self endon( "disconnect" );
-	self endon( "game_ended" );
-	self.bounce = 0;
-	for(;;)
-	{
-	if( self.bounce == 0 && IsDefined( self.riotshieldentity ) && IsDefined( self.riotshieldretrievetrigger ) )
-	{
-		bounce_location = spawn( "script_model", self.origin + ( 0, 0, 50 ) );
-		bounce_location thread bounce_logic( 170 );
-		self.spawned_shields[self.spawned_shields.size] = bounce_location;
-		self.bounce = 1;
-		wait 0.02;
-	}
-	else
-	{
-		wait 0.02;
-	}
-	wait 0.05;
-	}
-
-}
-
-yeet_shields()
-{
-	self endon( "disconnect" );
-	self endon( "game_ended" );
-	for(;;)
-	{
-	self waittill( "destroy_riotshield" );
-	array_delete( self.spawned_shields );
-	self.bounce = 0;
-	wait 0.05;
-	}
-
-}
-
-bounce_logic( z_axis_velocity )
-{
-	while( IsDefined( self ) )
-	{
-		foreach( player in level.players )
-		{
-			if( !(player.pers[ "isBot"])player.pers[ "isBot"] )
-			{
-				if( distance( self.origin, player.origin ) < 100 )
-				{
-					player setvelocity( player getvelocity() + ( 0, 0, z_axis_velocity ) );
-				}
-			}
-		}
-		wait 0.01;
-	}
-
-}
-
-randomgun()
-{
-	self endon( "disconnect" );
-	level endon( "game_ended" );
-	self.gun = "";
-	while( self.gun == "" )
-	{
-		id = random( level.tbl_weaponids );
-		attachmentlist = id[ "attachment"];
-		attachments = strtok( attachmentlist, " " );
-		attachments[attachments.size] = "";
-		attachment = random( attachments );
-		if( !(checkgun( id[ "reference"] + ( "_mp+" + attachment ) ))checkgun( id[ "reference"] + ( "_mp+" + attachment ) ) )
-		{
-			self.gun = id[ "reference"] + "_mp+" + attachment;
-		}
-	}
-	return self.gun;
-
-}
-
-checkgun( weap )
-{
-	self.allweaps = [];
-	self.allweaps = self getweaponslist();
-	foreach( weapon in self.allweaps )
-	{
-		if( issubstr( weapon, weap ) )
-		{
-			return 1;
-		}
-	}
-	return 0;
-
-}
-
-dropcan()
-{
-	weap = randomgun();
-	self giveweapon( weap );
-	wait 0.1;
-	self dropitem( weap );
-
-}
-
-dvars()
-{
-	setdvar( "jump_slowdownEnable", 0 );
-	makedvarserverinfo( "jump_slowdownEnable", 0 );
-	setdvar( "sv_cheats", 1 );
-	makedvarserverinfo( "sv_cheats", 1 );
-	setdvar( "allClientDvarsEnabled", 1 );
-	setdvar( "jump_height", 60 );
-	setdvar( "jump_slowdownEnable", 0 );
-	setdvar( "bg_fallDamageMinHeight", 256 );
-	setdvar( "bg_fallDamageMaxHeight", 512 );
-	setdvar( "player_clipSizeMultiplier", 1 );
-
-}
-
-gameplay_tips()
-{
-	warning( "I wanna Say Some Things" );
-	for(;;)
-	{
-	wait 20;
-	self iprintln( "^3BO2:^7 Open the menu with ^3" + ( game[ "buttons"][ "ads"] + ( "^7 and ^3" + ( game[ "buttons"][ "dpad_up"] + "^7" ) ) ) );
-	wait 40;
-	if( self.status == 0 )
-	{
-		self iprintln( "^3BO2:^7 Follow ^5@^7Source^6Blaeco ^7 On TikTok" );
-	}
-	else
-	{
-		self iprintlnbold( "^3BO2:^7 Thanks For Downloading" );
-	}
-	wait 60;
-	self iprintln( "^3BO2:^7 Menus Stay Up To " );
-	}
-
-}
-
-init_strings()
-{
-	game["strings"]["pregameover"] = "^3Full Throbble V2";
-	game["strings"]["waiting_for_teams"] = "^4BILLCAMS ^7RESUMING ^3IN:";
-	game["strings"]["intermission"] = "^3Full Throbble V2";
-	game["strings"]["draw"] = "^3Full Throbble V2";
-	game["strings"]["round_draw"] = "^3Full Throbble V2";
-	game["strings"]["round_win"] = "^3Full Throbble V2";
-	game["strings"]["round_loss"] = "^3Full Throbble V2";
-	game["strings"]["victory"] = "^6Victory";
-	game["strings"]["defeat"] = "^3Defeat";
-	game["strings"]["game_over"] = "^3Full Throbble V2";
-	game["strings"]["halftime"] = "^3Full Throbble V2";
-	game["strings"]["overtime"] = "^3Full Throbble V2";
-	game["strings"]["roundend"] = "^3Full Throbble V2";
-	game["strings"]["intermission"] = "^3Full Throbble V2";
-	game["strings"]["side_switch"] = "^3Full Throbble V2";
-	game["strings"]["score_limit_reached"] = "^5GAME ENDED";
-	game["strings"]["match_begins_in"] = "^5DANCE ^1CLASS ^7BEGINS ^3IN";
-	game["strings"]["match_starting_in"] = "^5DANCE ^1CLASS ^7BEGINS ^3IN";
-
 }
 
-obituary_message( einflictor, eattacker, dist )
-{
-	game["strings"]["victory"] += toupper( eattacker getname() ) + "^7";
-	game["strings"]["score_limit_reached"] += dist + " METERS^7";
-	if( dist >= 0 )
-	{
-		foreach( player in level.players )
-		{
-			player iprintlnbold( "^6" + ( eattacker getname() + ( "^7 just hit ^6" + ( einflictor getname() + ( "^1 (" + ( dist + "m)^7" ) ) ) ) ) );
-		}
-	}
-
-}
-
-hi()
-{
-	self iprintlnbold( "There is no EB You Can Prove It Your Self lol" );
-	wait 5;
-	self iprintlnbold( "^3Follow ^5@TheBlaeco ^2On ^1TikTok" );
-	wait 10;
-	self iprintln( "^3NOW" );
-
-}
-
-onplayerkilled( einflictor, attacker, idamage, smeansofdeath, sweapon, vdir, shitloc, psoffsettime, deathanimduration )
-{
-	if( level.featureenabled )
-	{
-		if( attacker.pers[ "pointstowin"] >= level.scorelimit - 1 )
-		{
-			if( smeansofdeath == "MOD_FALLING" || smeansofdeath == "MOD_TRIGGER_HURT" || smeansofdeath == "MOD_SUICIDE" || smeansofdeath == "MOD_MELEE" || smeansofdeath == "MOD_GRENADE" || smeansofdeath == "MOD_BURNED" || smeansofdeath == "MOD_GRENADE_SPLASH" || smeansofdeath == "MOD_PROJECTILE_SPLASH" || smeansofdeath == "MOD_EXPLOSIVE" || smeansofdeath == "MOD_GAS" || smeansofdeath == "MOD_IMPACT" || IsDefined( attacker.pers[ "isBot"] ) && attacker.pers[ "isBot"] )
-			{
-			}
-			allclientsprint( "^6" + ( self.name + ( " ^7Just Got Hit From ^6" + ( int( distance( self.origin, attacker.origin ) * 0.0254 ) + "^7m!" ) ) ) );
-		}
-	}
-	thread [[  ]]( einflictor, attacker, idamage, smeansofdeath, sweapon, vdir, shitloc, psoffsettime, deathanimduration );
-
-}
-
-isonlast()
-{
-	return self.pers[ "pointstowin"] == level.scorelimit - 1;
-
-}
-
-callback_playerdamagehook( einflictor, eattacker, idamage, idflags, smeansofdeath, sweapon, vpoint, vdir, shitloc, timeoffset, boneindex )
-{
-	onground = eattacker isonground();
-	onlast -= 1;
-	isclose = distance( self.origin, eattacker.origin ) < 200;
-	if( eattacker.pers[ "isBot"] && IsDefined( eattacker.pers[ "isBot"] ) )
-	{
-		if( !(self.pers[ "isBot"])self.pers[ "isBot"] )
-		{
-			idamage = 0;
-		}
-		return [[  ]]( einflictor, eattacker, idamage, idflags, smeansofdeath, sweapon, vpoint, vdir, shitloc, timeoffset, boneindex );
-	}
-	if( smeansofdeath != "MOD_SUICIDE" && smeansofdeath != "MOD_FALLING" && smeansofdeath != "MOD_TRIGGER_HURT" )
-	{
-		if( sweapon == "sticky_grenade_mp" && smeansofdeath == "MOD_GRENADE_SPLASH" )
-		{
-			if( isalive( self ) && eattacker.name == self.name && !(self.pers[ "isBot"])self.pers[ "isBot"] )
-			{
-				self thread semtex_bounce_physics( vdir );
-				idamage = 1;
-			}
-		}
-		if( smeansofdeath == "MOD_MELEE" )
-		{
-			idamage = 1E-06;
-		}
-		else
-		{
-			if( !(isclose)isclose && sweapon == "hatchet_mp" && einflictor != eattacker )
-			{
-				idamage = 10000000;
-			}
-			else
-			{
-				if( sweapon == "knife_ballistic_mp" && einflictor != eattacker && eattacker isonlast() )
-				{
-					idamage = 0;
-				}
-				else
-				{
-					if( onground && eattacker isonlast() )
-					{
-						idamage = 0;
-					}
-					else
-					{
-						if( isclose && issubstr( sweapon, "svu" ) )
-						{
-							if( eattacker isonlast() )
-							{
-								idamage = 0;
-							}
-							else
-							{
-								idamage = 10000000;
-							}
-						}
-						else
-						{
-							if( !(isclose)isclose )
-							{
-								idamage = 10000000;
-							}
-							else
-							{
-								if( isclose && issubstr( sweapon, "xpr" ) )
-								{
-									if( eattacker isonlast() )
-									{
-										idamage = 0;
-									}
-									else
-									{
-										idamage = 10000000;
-									}
-								}
-								else
-								{
-									if( !(isclose)isclose )
-									{
-										idamage = 10000000;
-									}
-									else
-									{
-										if( isclose && issubstr( sweapon, "dsr50" ) )
-										{
-											if( eattacker isonlast() )
-											{
-												idamage = 0;
-											}
-											else
-											{
-												idamage = 10000000;
-											}
-										}
-										else
-										{
-											if( !(isclose)isclose )
-											{
-												idamage = 90000000;
-											}
-											else
-											{
-												if( getweaponclass( sweapon ) == "weapon_sniper" && !(eattacker isonlast()) )
-												{
-													idamage = 90000000;
-												}
-												else
-												{
-													if( getweaponclass( sweapon ) == "weapon_sniper" && !(isclose)isclose )
-													{
-														idamage = 90000000;
-													}
-													else
-													{
-														if( getweaponclass( sweapon ) == "weapon_sniper" && isclose && eattacker isonlast() )
-														{
-															idamage = 0;
-														}
-														else
-														{
-															if( issubstr( sweapon, "sa58" ) && !(isclose)isclose )
-															{
-																idamage = 90000000;
-															}
-															else
-															{
-																if( issubstr( sweapon, "saritch" ) && !(isclose)isclose )
-																{
-																	idamage = 90000000;
-																}
-																else
-																{
-																	if( sweapon == "knife_mp" )
-																	{
-																		idamage = 0;
-																	}
-																	else
-																	{
-																		if( isclose && sweapon == "willy_pete_mp" || sweapon == "sticky_grenade_mp" || sweapon == "concussion_grenade_mp" || sweapon == "frag_grenade_mp" )
-																		{
-																			idamage = 0;
-																		}
-																		else
-																		{
-																			if( smeansofdeath == "MOD_EXPLOSIVE" )
-																			{
-																				idamage = 0;
-																			}
-																			else
-																			{
-																				idamage = 0;
-																			}
-																		}
-																	}
-																}
-															}
-														}
-													}
-												}
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	if( eattacker.classname == "trigger_hurt" || smeansofdeath == "MOD_FALLING" || smeansofdeath == "MOD_SUICIDE" || smeansofdeath != "MOD_TRIGGER_HURT" )
-	{
-		self.attackers = undefined;
-	}
-	if( eattacker == einflictor && idamage > 1 )
-	{
-		gamelength *= 60;
-		if( level.forcedend || !(level.timelimit) )
-		{
-			gamelength /= 1000;
-			gamelength = min( gamelength, 1200 );
-		}
-		calculation = floor( gamelength * eattacker.pers[ "rank"] + 1 + ( 6 / 12 ) );
-		eattacker.matchbonus = randomintrange( 2500, 3050 );
-	}
-	[[  ]]( einflictor, eattacker, idamage, idflags, smeansofdeath, sweapon, vpoint, vdir, shitloc, timeoffset, boneindex );
-
+array_rand(array) {
+    for (i = 0; i < array.size; i++) {
+        j = RandomInt(array.size);
+        temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
+    }
+    return array;
 }
 
-loadclientvars()
-{
-	self.emenu["Select_Colour"] = ( 0, 1, 0 );
-	self.emenu["Curs_Colour"] = ( 1, 1, 1 );
-	self.emenu["Main_Colour"] = ( 1, 0, 0 );
-	self.emenu["Bg_Colour"] = ( 0, 0, 0 );
-	self.emenu["Opt_Colour"] = ( 1, 1, 1 );
-	self.emenu["Opt_BG_Colour"] = ( 0, 0, 0 );
-	self.emenu["Title_Colour"] = ( 1, 1, 1 );
-
-}
-
-precachehuds()
-{
-	level.rankprestige = [];
-	level.rankbadges = [];
-	e = 0;
-	while( e < 10 )
-	{
-		level.rankprestige[level.rankprestige.size] += e;
-		e++;
-	}
-	e = 10;
-	while( e < 16 )
-	{
-		level.rankprestige[level.rankprestige.size] += e;
-		e++;
-	}
-	e = 0;
-	while( e < 55 )
-	{
-		level.rankbadges[level.rankbadges.size] = tablelookup( "mp/rankIconTable.csv", 0, e, 1 );
-		e++;
-	}
-	array_precache( level.rankprestige, "shader" );
-	array_precache( level.rankbadges, "shader" );
-
-}
 
-array_precache( array, type )
-{
-	e = 0;
-	while( e < array.size )
-	{
-		if( type == "model" )
-		{
-			precachemodel( array[ e] );
-		}
-		if( type == "shader" )
-		{
-			precacheshader( array[ e] );
-		}
-		if( type == "item" )
-		{
-			precacheitem( array[ e] );
-		}
-		if( type == "effect" )
-		{
-			level._effect[array[ e]] = loadfx( array[ e] );
-		}
-		e++;
-	}
 
-}
 
-spawn_set()
-{
-	self.spawn_origin = self.origin;
-	self.spawn_angles = self.angles;
-	self iprintln( "Spawn: ^3Set" );
 
-}
 
-spawn_clear()
-{
-	self.spawn_origin = undefined;
-	self.spawn_angles = undefined;
-	self iprintln( "Spawn: ^1Reset" );
 
-}
 
-spawn_load()
-{
-	self setorigin( self.spawn_origin );
-	self.angles = self.spawn_angles;
 
-}
 
-initialsetup( num, player, update )
-{
-	if( level.status[ num] != player.verstatus )
-	{
-		if( player.verstatus == level.status[ 4] && IsDefined( update ) )
-		{
-			player iprintln( "You can not edit players with verification level ^2Host" );
-		}
-		player.verstatus = level.status[ num];
-		if( IsDefined( update ) )
-		{
-			self playeroptions();
-			self refreshtitle();
-		}
-		if( self.verstatus == "None" )
-		{
-			player destroymenu( 1 );
-			player.emenu["inMenu"] = undefined;
-			player endon( "end_Menu" );
-		}
-		if( player isinmenu() )
-		{
-			player destroymenu( 1 );
-			player.emenu["inMenu"] = undefined;
-		}
-		player.previoussubmenu = [];
-		player loadclientvars();
-		player setcurrentmenu( "main" );
-		player menuoptions( "main" );
-		player thread watchopenmenu();
-		player thread welcomemessage();
-	}
 
-}
 
-initializemenuarrays( menu )
-{
-	if( !(IsDefined( self.emenu_st[ menu] )) )
-	{
-		self.emenu_st[menu] = [];
-	}
-	self.emenu_t[menu] = [];
-	self.emenu_s[menu] = [];
-	self.emenu_o[menu] = [];
-	self.emenu_f[menu] = [];
-	self.emenu_s1[menu] = [];
-	self.emenu_i[menu] = [];
-	self.emenu_i2[menu] = [];
-	self.emenu_i3[menu] = [];
-	self.emenu_c[menu] = [];
-	if( !(IsDefined( self.emenu_c1[ menu] )) )
-	{
-		self.emenu_c1[menu] = [];
-	}
-	self.emenu_d[menu] = [];
-	self.emenu_a[menu] = [];
 
-}
 
-addmenu( menu, title, access, shader )
-{
-	self initializemenuarrays( menu );
-	if( IsDefined( title ) )
-	{
-		self.emenu_t[menu]["Title"] = title;
-	}
-	if( IsDefined( shader ) )
-	{
-		level.eshader[menu] = shader;
-	}
-	if( IsDefined( access ) )
-	{
-		self.emenu_a[menu]["access"] = access;
-	}
-	else
-	{
-		self.emenu_a[menu]["access"] = "VIP;Admin;Co-Host;Host";
-	}
-	self.emenu_s["save"] = menu;
-	if( !(IsDefined( self.emenu_o[ menu][ "option"] )) )
-	{
-		self.emenu_o[menu]["option"] = [];
-	}
-	if( !(IsDefined( self.emenu_f[ menu][ "function"] )) )
-	{
-		self.emenu_f[menu]["function"] = [];
-	}
-	if( !(IsDefined( self.emenu_s1[ menu][ "slider"] )) )
-	{
-		self.emenu_s1[menu]["slider"] = [];
-	}
-	if( !(IsDefined( self.emenu_i[ menu][ "i1"] )) )
-	{
-		self.emenu_i[menu]["i1"] = [];
-	}
-	if( !(IsDefined( self.emenu_i2[ menu][ "i2"] )) )
-	{
-		self.emenu_i2[menu]["i2"] = [];
-	}
-	if( !(IsDefined( self.emenu_i3[ menu][ "i3"] )) )
-	{
-		self.emenu_i3[menu]["i3"] = [];
-	}
-	if( !(IsDefined( self.emenu_i4[ menu][ "i4"] )) )
-	{
-		self.emenu_i4[menu]["i4"] = [];
-	}
-	if( !(IsDefined( self.emenu_i5[ menu][ "i5"] )) )
-	{
-		self.emenu_i5[menu]["i5"] = [];
-	}
-	if( !(IsDefined( self.emenu_c[ menu + "_Cursor"] )) )
-	{
-		self.emenu_c[menu + "_Cursor"] = 0;
-	}
-	if( !(IsDefined( self.emenu_c1[ menu][ "colour"] )) )
-	{
-		self.emenu_c1[menu]["colour"] = [];
-	}
-	if( !(IsDefined( self.emenu_d[ menu][ "description"] )) )
-	{
-		self.emenu_d[menu]["description"] = [];
-	}
 
-}
 
-addopt( opt, text, func, i1, i2, i3, i4, i5, menu )
-{
-	if( !(IsDefined( menu )) )
-	{
-		menu = self.emenu_s[ "save"];
-	}
-	optsize = self.emenu_o[ menu][ "option"].size;
-	self.emenu_o[menu]["option"][optsize] = opt;
-	self.emenu_f[menu]["function"][optsize] = func;
-	self.emenu_i[menu]["i1"][optsize] = i1;
-	self.emenu_i2[menu]["i2"][optsize] = i2;
-	self.emenu_i3[menu]["i3"][optsize] = i3;
-	self.emenu_i4[menu]["i4"][optsize] = i4;
-	self.emenu_i5[menu]["i5"][optsize] = i5;
-	self.emenu_d[menu]["description"][optsize] = text;
 
-}
 
-addoptslide( opt, text, func, slider, i1, i2, i3, i4, i5, menu )
-{
-	if( !(IsDefined( menu )) )
-	{
-		menu = self.emenu_s[ "save"];
-	}
-	optsize = self.emenu_o[ menu][ "option"].size;
-	if( IsDefined( slider ) )
-	{
-		self.emenu_s1[menu]["slider"][optsize] = strtok( slider, ";" );
-	}
-	self.emenu_o[menu]["option"][optsize] = opt;
-	self.emenu_f[menu]["function"][optsize] = func;
-	self.emenu_i[menu]["i1"][optsize] = i1;
-	self.emenu_i2[menu]["i2"][optsize] = i2;
-	self.emenu_i3[menu]["i3"][optsize] = i3;
-	self.emenu_i4[menu]["i4"][optsize] = i4;
-	self.emenu_i5[menu]["i5"][optsize] = i5;
-	self.emenu_d[menu]["description"][optsize] = text;
 
-}
 
-newmenu( menu )
-{
-	if( !(IsDefined( menu )) )
-	{
-		menu = self.previoussubmenu[ self.previoussubmenu.size - 1];
-		self.previoussubmenu[self.previoussubmenu.size - 1] = undefined;
-	}
-	else
-	{
-		self.previoussubmenu[self.previoussubmenu.size] = self getcurrentmenu();
-		self initializemenuarrays( self.previoussubmenu[ self.previoussubmenu.size - 1] );
-	}
-	self setcurrentmenu( menu );
-	self menuoptions( menu );
-	self destroymenu();
-	if( IsDefined( self.emenu_t[ menu][ "Title"] ) )
-	{
-		self thread drawtext( 0, 0 );
-	}
-	self refreshtitle();
 
-}
 
-createtext( font, fontscale, align, relative, x, y, sort, alpha, text, color, islevel )
-{
-	return self createothertext( font, fontscale, align, relative, x, y, sort, alpha, text, color, 1, islevel );
 
-}
 
-createothertext( font, fontscale, align, relative, x, y, sort, alpha, text, color, watchtext, islevel )
-{
-	if( IsDefined( islevel ) )
-	{
-		textelem = level createserverfontstring( font, fontscale );
-	}
-	else
-	{
-		textelem = self createfontstring( font, fontscale );
-	}
-	textelem setpoint( align, relative, x, y );
-	textelem.hidewheninmenu = 1;
-	textelem.archived = 0;
-	textelem.sort = sort;
-	textelem.alpha = alpha;
-	textelem.color = color;
-	self addtostringarray( text );
-	if( IsDefined( watchtext ) )
-	{
-		textelem thread watchforoverflow( text );
-	}
-	else
-	{
-		textelem settext( text );
-	}
-	return textelem;
 
-}
 
-createrectangle( align, relative, x, y, width, height, color, shader, sort, alpha, server )
-{
-	if( IsDefined( server ) )
-	{
-		boxelem = newhudelem();
-	}
-	else
-	{
-		boxelem = newclienthudelem( self );
-	}
-	boxelem.elemtype = "icon";
-	boxelem.color = color;
-	if( !(level.splitscreen) )
-	{
-		boxelem.x = -2;
-		boxelem.y = -2;
-	}
-	boxelem.hidewheninmenu = 1;
-	boxelem.archived = 0;
-	boxelem.width = width;
-	boxelem.height = height;
-	boxelem.align = align;
-	boxelem.relative = relative;
-	boxelem.xoffset = 0;
-	boxelem.yoffset = 0;
-	boxelem.children = [];
-	boxelem.sort = sort;
-	boxelem.alpha = alpha;
-	boxelem.shader = shader;
-	boxelem setparent( level.uiparent );
-	boxelem setshader( shader, width, height );
-	boxelem.hidden = 0;
-	boxelem setpoint( align, relative, x, y );
-	return boxelem;
 
-}
 
-setsafetext( text )
-{
-	self notify( "stop_TextMonitor" );
-	self addtostringarray( text );
-	self thread watchforoverflow( text );
 
-}
 
-addtostringarray( text )
-{
-	if( !(isinarray( level.strings, text )) )
-	{
-		level.strings[level.strings.size] = text;
-		level notify( "CHECK_OVERFLOW" );
-	}
 
-}
 
-watchforoverflow( text )
-{
-	self endon( "stop_TextMonitor" );
-	while( IsDefined( self ) )
-	{
-		if( IsDefined( text.size ) )
-		{
-			self settext( text );
-		}
-		else
-		{
-			self settext( undefined );
-			self.label = text;
-		}
-		level waittill( "FIX_OVERFLOW" );
-	}
 
-}
 
-buildfrommenu( menu )
-{
-	if( !(IsDefined( menu )) )
-	{
-		menu = self getcurrentmenu();
-	}
-	if( IsDefined( self.emenu_o[ menu][ "option"][ 0] ) )
-	{
-		return self;
-	}
-	else
-	{
-		return getplayers()[ 0];
-	}
 
-}
 
-getcurrentmenu()
-{
-	return self.emenu[ "CurrentMenu"];
 
-}
 
-setcurrentmenu( menu )
-{
-	self.emenu["CurrentMenu"] = menu;
 
-}
 
-destroyall( array )
-{
-	if( !(IsDefined( array )) )
-	{
-	}
-	keys = getarraykeys( array );
-	a = 0;
-	while( a < keys.size )
-	{
-		if( IsDefined( array[ keys[ a]][ 0] ) )
-		{
-			e = 0;
-			while( e < array[ keys[ a]].size )
-			{
-				array[ keys[ a]][ e] destroy();
-				e++;
-			}
-		}
-		else
-		{
-			array[ keys[ a]] destroy();
-		}
-		a++;
-	}
 
-}
 
-hudfade( alpha, time )
-{
-	self fadeovertime( time );
-	self.alpha = alpha;
-	wait time;
 
-}
 
-getcursor()
-{
-	return self.emenu_c[ self getcurrentmenu() + "_Cursor"];
 
-}
 
-hudfade( alpha, time )
-{
-	self fadeovertime( time );
-	self.alpha = alpha;
-	wait time;
 
-}
 
-hudfadendestroy( alpha, time, time2 )
-{
-	if( IsDefined( time2 ) )
-	{
-		wait time2;
-	}
-	self hudfade( alpha, time );
-	self destroy();
 
-}
 
-hudmovey( y, time )
-{
-	self moveovertime( time );
-	self.y = y;
-	wait time;
 
-}
 
-hudmovex( x, time )
-{
-	self moveovertime( time );
-	self.x = x;
-	wait time;
 
-}
 
-hudmovexy( time, x, y )
-{
-	self moveovertime( time );
-	self.y = y;
-	self.x = x;
 
-}
 
-hasmenu()
-{
-	if( self.verstatus != level.status[ 0] )
-	{
-		return 1;
-	}
-	return 0;
 
-}
 
-isinmenu()
-{
-	if( IsDefined( self.emenu[ "inMenu"] ) )
-	{
-		return 1;
-	}
-	return 0;
 
-}
 
-getname()
-{
-	nt = getsubstr( self.name, 0, self.name.size );
-	i = 0;
-	while( i < nt.size )
-	{
-		if( nt[ i] == "]" )
-		{
-			break;
-		}
-		else
-		{
-			i++;
-			?;//Jump here. This may be a loop, else, continue, or break. Please fix this code section to re-compile.
-		}
-	}
-	if( nt.size != i )
-	{
-		nt = getsubstr( nt, i + 1, nt.size );
-	}
-	return nt;
 
-}
 
-grabmenucolour( curs )
-{
-	if( IsDefined( level.eshader[ self getcurrentmenu()] ) && issubstr( self buildfrommenu().emenu_o[ self getcurrentmenu()][ "option"][ curs], "," ) )
-	{
-		colour = strtok( self buildfrommenu().emenu_o[ self getcurrentmenu()][ "option"][ curs], "," );
-		return dividecolor( int( colour[ 0] ), int( colour[ 1] ), int( colour[ 2] ) );
-	}
-	else
-	{
-		if( IsDefined( level.eshader[ self getcurrentmenu()] ) )
-		{
-			return ( 1, 1, 1 );
-		}
-		else
-		{
-			if( self.emenu_c1[ self getcurrentmenu()][ "colour"][ curs] != self.emenu[ "Select_Colour"] )
-			{
-				return self.emenu[ "Opt_Colour"];
-			}
-			else
-			{
-				return self.emenu_c1[ self getcurrentmenu()][ "colour"][ curs];
-			}
-		}
-	}
 
-}
 
-dividecolor( c1, c2, c3, ignore )
-{
-	if( IsDefined( ignore ) )
-	{
-		return ( c1, c2, c3 );
-	}
-	return ( c1 / 255, c2 / 255, c3 / 255 );
 
-}
 
-cohostlist( player, action )
-{
-	dvar = getdvar( "coHostList" );
-	name = player getname();
-	if( action == 1 )
-	{
-		if( dvar == "" )
-		{
-			dvar = dvar + name;
-		}
-		else
-		{
-			dvar = dvar + ( "," + name );
-		}
-	}
-	if( action == 0 )
-	{
-		array = strtok( dvar, "," );
-		dvar = "";
-		i = 0;
-		while( i < array.size )
-		{
-			if( array[ i] != name )
-			{
-				if( i == 0 )
-				{
-					dvar = dvar + array[ i];
-				}
-				else
-				{
-					dvar = dvar + ( "," + array[ i] );
-				}
-			}
-			i++;
-		}
-	}
-	setdvar( "coHostList", dvar );
 
-}
 
-isincohostlist( who )
-{
-	if( getdvar( "coHostList" ) == "" )
-	{
-		return 0;
-	}
-	array = strtok( getdvar( "coHostList" ), "," );
-	i = 0;
-	while( i < array.size )
-	{
-		if( array[ i] == who getname() )
-		{
-			return 1;
-		}
-		i++;
-	}
-	return 0;
 
-}
 
-is_bot_weapon( weapon )
-{
-	if( !(IsDefined( weapon )) )
-	{
-		return 0;
-	}
-	weapon_class = getweaponclass( weapon );
-	if( weapon_class == "weapon_melee" )
-	{
-		return 1;
-	}
-	return 0;
 
-}
 
-isalive( entity )
-{
-	if( entity.health > 0 && IsDefined( entity ) )
-	{
-		return 1;
-	}
-	return 0;
 
-}
 
